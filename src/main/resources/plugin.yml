@@ -1,12 +1,21 @@
-name: ${NAME}
-version: ${VERSION}
-api-version: ${MINECRAFT_VERSION}
-main: ru.joutak.template.EmptyPlugin
-description: 'A template plugin'
-authors: ['EnderDissa', 'Stunnerer', 's4dnex']
-contributors: ['technosimp']
-website: ${WEBSITE}
+name: CreakyWars
+version: 1.0.0
+main: ru.joutak.creakywars.CreakyWars
+api-version: 1.21
+author: Kostyamops
+description: Bedwars-style game with Creaky theme
+depend: [Multiverse-Core]
 
-depend: []
-libraries:
-  - 'org.jetbrains.kotlin:kotlin-stdlib:${KOTLIN_VERSION}'
+commands:
+  cw:
+    description: Main CreakyWars command
+    usage: /<command> [args]
+    aliases: [creakywars, creaky]
+
+permissions:
+  creakywars.admin:
+    description: Allows access to admin commands
+    default: op
+  creakywars.join:
+    description: Allows joining games
+    default: true

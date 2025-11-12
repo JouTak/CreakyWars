@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly(libs.kotlin)
+    implementation(libs.kotlin)
     compileOnly(libs.paper)
 }
 
@@ -74,6 +74,7 @@ tasks.processResources {
 
 tasks.shadowJar {
     archiveFileName.set("${project.name}-${project.version}.jar")
+    relocate("kotlin", "ru.joutak.creakywars.libs.kotlin")
 
     if (System.getenv("TEST_PLUGIN_BUILD") != null) {
         val serverPath = System.getenv("SERVER_PATH")
