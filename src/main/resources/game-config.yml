@@ -1,0 +1,201 @@
+# Игровой конфиг CreakyWars
+# Настройки ресурсов и торговли
+
+day-night-cycle:
+  day-duration-ticks: 6000
+  night-duration-ticks: 6000
+  eyeblossom-open-percent: 0.5
+  creaking-aggro-radius: 30.0
+
+respawn:
+  delay-seconds: 15
+  spectator-mode: true
+
+resources:
+  # Низкоуровневая резина
+  rubber_low:
+    material: RESIN_CLUMP
+    display-name: "§7Резина"
+    spawn-period: 60 # тики
+    tier: 1
+
+  # Среднеуровневая резина
+  rubber_mid:
+    material: RESIN_BRICK
+    display-name: "§6Прочная резина"
+    spawn-period: 180
+    tier: 2
+
+  # Высокоуровневая резина
+  rubber_high:
+    material: RESIN_BRICKS
+    display-name: "§dРезиновый блок"
+    spawn-period: 360
+    tier: 3
+
+  # Глазалия
+  eyeblossom:
+    material: OPEN_EYEBLOSSOM
+    display-name: "§2Открытая глазалия"
+    spawn-period: -1  # Не спавнится автоматически
+    tier: 2
+
+trades:
+  # === БЛОКИ ===
+  wool:
+    cost: "rubber_low:4"
+    result: "WHITE_WOOL:16"
+    display-name: "Шерсть"
+    category: "blocks"
+
+  terracotta:
+    cost: "rubber_low:12"
+    result: "WHITE_TERRACOTTA:16"
+    display-name: "Обожжённая глина"
+    category: "blocks"
+
+  end_stone:
+    cost: "rubber_low:24"
+    result: "END_STONE:12"
+    display-name: "Эндерстоун"
+    category: "blocks"
+
+  planks:
+    cost: "rubber_mid:4"
+    result: "OAK_PLANKS:16"
+    display-name: "Доски"
+    category: "blocks"
+
+  obsidian:
+    cost: "eyeblossom:4"
+    result: "OBSIDIAN:4"
+    display-name: "Обсидиан"
+    category: "blocks"
+
+  # === МЕЧИ ===
+  stone_sword:
+    cost: "rubber_low:10"
+    result: "STONE_SWORD:1"
+    display-name: "Каменный меч"
+    category: "swords"
+
+  iron_sword:
+    cost: "rubber_mid:7"
+    result: "IRON_SWORD:1"
+    display-name: "Железный меч"
+    category: "swords"
+
+  diamond_sword:
+    cost: "eyeblossom:4"
+    result: "DIAMOND_SWORD:1"
+    display-name: "Алмазный меч"
+    category: "swords"
+
+  knockback_stick:
+    cost: "rubber_mid:10"
+    result: "STICK:1"
+    display-name: "Откидывающая палка"
+    category: "swords"
+    enchantments:
+      - "KNOCKBACK:2"
+
+  knockback_stick_alt:
+    cost: "rubber_high:5"
+    result: "STICK:1"
+    display-name: "Откидывающая палка"
+    category: "swords"
+    enchantments:
+      - "KNOCKBACK:2"
+
+  # === БРОНЯ ===
+  chainmail_armor:
+    cost: "rubber_low:40"
+    result: "CHAINMAIL_CHESTPLATE:1"
+    display-name: "Кольчужная броня (полный комплект)"
+    category: "armor"
+
+  iron_armor:
+    cost: "rubber_mid:12"
+    result: "IRON_CHESTPLATE:1"
+    display-name: "Железная броня (полный комплект)"
+    category: "armor"
+
+  diamond_armor:
+    cost: "eyeblossom:6"
+    result: "DIAMOND_CHESTPLATE:1"
+    display-name: "Алмазная броня (полный комплект)"
+    category: "armor"
+
+  # === ИНСТРУМЕНТЫ ===
+  wooden_pickaxe:
+    cost: "rubber_low:20"
+    result: "WOODEN_PICKAXE:1"
+    display-name: "Деревянная кирка"
+    category: "tools"
+
+  wooden_axe:
+    cost: "rubber_low:20"
+    result: "WOODEN_AXE:1"
+    display-name: "Деревянный топор"
+    category: "tools"
+
+  stone_pickaxe:
+    cost: "rubber_low:25"
+    result: "STONE_PICKAXE:1"
+    display-name: "Каменная кирка"
+    category: "tools"
+
+  stone_axe:
+    cost: "rubber_low:25"
+    result: "STONE_AXE:1"
+    display-name: "Каменный топор"
+    category: "tools"
+
+  iron_pickaxe:
+    cost: "rubber_low:30"
+    result: "IRON_PICKAXE:1"
+    display-name: "Железная кирка"
+    category: "tools"
+
+  iron_axe:
+    cost: "rubber_low:30"
+    result: "IRON_AXE:1"
+    display-name: "Железный топор"
+    category: "tools"
+
+  diamond_pickaxe:
+    cost: "rubber_mid:9"
+    result: "DIAMOND_PICKAXE:1"
+    display-name: "Алмазная кирка"
+    category: "tools"
+
+  diamond_axe:
+    cost: "rubber_mid:9"
+    result: "DIAMOND_AXE:1"
+    display-name: "Алмазный топор"
+    category: "tools"
+
+  shears:
+    cost: "rubber_low:16"
+    result: "SHEARS:1"
+    display-name: "Ножницы"
+    category: "tools"
+
+  # === ОСОБОЕ ===
+  fireball:
+    cost: "rubber_low:40"
+    result: "FIRE_CHARGE:1"
+    display-name: "Огненный шар"
+    category: "special"
+
+  golden_apple:
+    cost: "rubber_low:3"
+    result: "GOLDEN_APPLE:1"
+    display-name: "Золотое яблоко"
+    category: "special"
+
+  ender_eye:
+    cost: "eyeblossom:4"
+    result: "ENDERPEARL:1"
+    display-name: "Око Края"
+    category: "special"
