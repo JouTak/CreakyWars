@@ -1,34 +1,52 @@
-Плагин миниигры майнкрафт
+# JouTak Plugin Template (Kotlin)
 
-Что такое второй режим: CreakyWars. По сути бедварс, но скрипучий, то есть вокруг тематики скрипунов. Что отличает от бедварса:
+Заготовка для плагина на JouTak (ДжоуТек) (<ins>joutak.ru</ins>)
 
-Вместо кровати сердце скрипуна, вместо баз деревья скрипунов, вместо валюты резина. Резина бывает как раз трех типов (как слизь, как кирпичи и как блоки), соответственно в центре и на островах спавнится по-разному. Вместо торговцев уже не помню кто, но в целом не так важно
 
-Из механик думаю всё понятно. Основное:
-Спавн
-Генерация ресурсов на поинтах
-Система жизней можно сказать (пока не сломали ядро)
-Магазин ресурсов и бафов
+# Перед использованием
 
-Что такое спартакиадамод:
-Все режимы у нас могут играться как без спартакиады, так и со спартакиадой. Сейчас мы в первую очередь пишем режим спартакиады, конечно
+1. Отредактируйте:
+    - `gradle.properties` &mdash; укажите **версию** и **название** плагина, а также **ссылку на репозиторий** с вашим плагином
+    - `src/main/kotlin/com/joutak/` &mdash; переименуйте **основной класс** под название вашего плагина
+    - `src/main/resources/plugin.yml` &mdash; укажите **правильный путь** до основного класса плагина и укажите себя как **автора**
+    - `gradle/libs.versions.toml` &mdash; измените **версии** **Kotlin**'а, **ядра** и **других библиотек** по необходимости 
+    - Укажите **полный путь до тестового сервера** в переменной окружения системы `SERVER_PATH`
 
-Что такое командная игра:
-в рамках спартакиады - соединение людей в команды в соответствии с файликом
-вне спартакиады - в соответствии с рандомом или гуишкой выбора
+> [!TIP]
+> Указав путь до тестового сервера, можно собирать плагин с помощью конфигурации `[Snapshot] Build`, тогда jar-архив с вашим плагином сразу будет создаваться в нужной папке автоматически.
 
-Коммиты из другой копии репозитория:
-🔨 11 new commits (https://github.com/JouTak/CreakyWars/compare/ca50ea848508%5E...0944d6be09e2) to CreakyWars:dev:
 
-ca50ea8 (https://github.com/JouTak/CreakyWars/commit/ca50ea84850856064b29cf4aff17a338a6157965): feat: add new config system by Konstantin Gritzkevich
-801a9bf (https://github.com/JouTak/CreakyWars/commit/801a9bf0a1bb439a82eced600ba2eec02cf04fb8): feat: plugin core, commands by Konstantin Gritzkevich
-cc35953 (https://github.com/JouTak/CreakyWars/commit/cc35953954a67ed60b0d351fb3af23b48ae975b9): feat: arenas system + multiverse integration by Konstantin Gritzkevich
-39838dd (https://github.com/JouTak/CreakyWars/commit/39838dd7efe563e9d0f257b8679fb5eea7d68266): feat: gui + trades by Konstantin Gritzkevich
-81eae48 (https://github.com/JouTak/CreakyWars/commit/81eae485e11243ed2056c64ea1c88cc36b19251f): feat: queue system, spartakiada mode by Konstantin Gritzkevich
-8276baa (https://github.com/JouTak/CreakyWars/commit/8276baa50ff758a085fc1726bfd40aca7ddd6883): feat: resource spawners by Konstantin Gritzkevich
-60f8427 (https://github.com/JouTak/CreakyWars/commit/60f8427c0b1482886f8586084cbe549a48d28174): feat: games manager by Konstantin Gritzkevich
-5cd10b6 (https://github.com/JouTak/CreakyWars/commit/5cd10b6e3a9424eaf15e7b3113391306540f4c32): feat: plugin and message utils by Konstantin Gritzkevich
-a52fb1c (https://github.com/JouTak/CreakyWars/commit/a52fb1ca61d5354f05681ef7950a51ce77bbbf7c): feat: players, teams and score system by Konstantin Gritzkevich
-40d4f47 (https://github.com/JouTak/CreakyWars/commit/40d4f4722f6691bf7ffee526e841d71a1a26e745): feat: cores + phases system by Konstantin Gritzkevich
-0944d6b (https://github.com/JouTak/CreakyWars/commit/0944d6be09e2fb467e0ac6c424c5600e1af12255): main island feats (eyeblosson, day/night) by Konstantin Gritzkevich
+# Сборка плагина
 
+1. Открыть проект в **IntelliJ IDEA**
+2. Нажать кнопку `Run` справа сверху для сборки:
+   - `[Snapshot]` создает архив с плагином в папке `plugins/` тестового сервера (путь до которого нужно указать в переменной окружения `SERVER_PATH`)
+   - `[Release]` создает архив с плагином в папке `build/` проекта
+
+
+# Перед началом выполнения тестового задания
+> [!NOTE]
+> Данный параграф предназначен для тех, кто захотел попробовать себя в роли разработчка плагинов для Minecraft серверов в составе команды JouTak.
+
+Базовое описание, что нужно сделать:
+1) Сделать собственный **fork** данного репозитория
+2) Склонировать созданный репозиторий себе по **SSH** (`git clone`) 
+3) Открыть проект в любой удобной для вас **IDE**
+> [!TIP]
+> Рекомендуем использовать **IntelliJ IDEA**, так как полноценная поддержка **Kotlin**'а со всеми фишками и плюшками есть только в ней, но выбор за вами
+4) Разобраться с расположением папочек и синтаксисом **Kotlin**'а, затем прописать базовую логику, которая была описана в вашем задании в issues (Любая креативность поощряется)
+5) Собрать плагин с помощью **Gradle**
+> [!TIP]
+> Конфиги уже заранее прописаны (один для тестовых целей, второй для полноценного релиза), вам самим ничего прописывать не надо. Для тестов лучше использовать `[Snapshot]` версию, чтобы каждый раз не перекидывать вручную плагин в папку сервера, главное не забудьте создать переменную окружения `SERVER_PATH`!
+6) Запустить на своем компьютере локальный [**Purpur**](https://purpurmc.org) сервер
+7) Подключиться на свой локальный сервер и проверить, что плагин работает исправно
+8) Отправить **pull request** на **GitHub** и дождаться ответа
+> [!TIP]
+> Если долго никто не отвечает, то можно пингануть кого-нибудь, чтобы реквест отсмотрели и приняли :)
+
+Если плагин написан без базовых ошибок (синтаксических и т. п.), то на **GitHub**'е автоматически соберется такой же jar-архив, который будет так же работать на твоем локальном сервере.
+
+Поначалу всё можно писать в основном классе, но потом все вещи по типу команд, listener'ов и различные event'ы нужно выделить в отдельные классы и пакеты. 
+
+> [!IMPORTANT]
+> Главное, если есть какие-то вопросы - не стесняйся спрашивать!
