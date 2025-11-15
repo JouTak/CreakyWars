@@ -29,11 +29,17 @@ data class MapConfig(
 
             if (!file.exists()) {
                 plugin.saveResource("maps-config.yml", false)
-                PluginManager.getLogger().info("Создан maps-config.yml из шаблона")
+                PluginManager.getLogger().info("✓ Создан maps-config.yml из шаблона")
             }
 
             config = YamlConfiguration.loadConfiguration(file)
-            PluginManager.getLogger().info("Конфиг карт (maps-config.yml) загружен!")
+
+            val mapCount = config.getKeys(false).size
+            if (mapCount == 0) {
+                PluginManager.getLogger().warning("⚠ В maps-config.yml не найдено ни одной карты!")
+            } else {
+                PluginManager.getLogger().info("✓ Конфиг карт загружен! Найдено карт: $mapCount")
+            }
         }
 
         fun load(mapName: String): MapConfig {
@@ -42,44 +48,82 @@ data class MapConfig(
             }
 
             val mapSection = config.getConfigurationSection(mapName)
-                ?: throw IllegalStateException("Карта '$mapName' не найдена в maps.yml!")
+                ?: throw IllegalStateException("Карта '$mapName' не найдена в maps-config.yml!")
 
             val displayName = mapSection.getString("display-name", mapName) ?: mapName
             val description = mapSection.getString("description", "") ?: ""
             val timeOfDay = mapSection.getLong("time-of-day", 6000L)
             val weather = mapSection.getString("weather", "clear") ?: "clear"
 
+            // Генераторы
             val resourceSpawners = mutableMapOf<String, List<SpawnLocation>>()
             val spawnersSection = mapSection.getConfigurationSection("resource-spawners")
             if (spawnersSection != null) {
                 for (resourceType in spawnersSection.getKeys(false)) {
                     val locations = spawnersSection.getStringList(resourceType).mapIndexed { index, locStr ->
-                        SpawnLocation.fromString(locStr, "${resourceType}_$index")
+                        try {
+                            SpawnLocation.fromString(locStr, "${resourceType}_$index")
+                        } catch (e: Exception) {
+                            PluginManager.getLogger().warning("⚠ Ошибка парсинга локации генератора $resourceType[$index]: $locStr")
+                            throw e
+                        }
                     }
                     resourceSpawners[resourceType] = locations
                 }
             }
 
+            // Торговцы
             val traderLocations = mapSection.getStringList("trader-locations").mapIndexed { index, locStr ->
-                SpawnLocation.fromString(locStr, "trader_$index")
+                try {
+                    SpawnLocation.fromString(locStr, "trader_$index")
+                } catch (e: Exception) {
+                    PluginManager.getLogger().warning("⚠ Ошибка парсинга локации торговца[$index]: $locStr")
+                    throw e
+                }
             }
 
+            // Спавны команд
             val teamSpawns = mapSection.getStringList("team-spawns").mapIndexed { index, locStr ->
-                SpawnLocation.fromString(locStr, "team_$index")
+                try {
+                    SpawnLocation.fromString(locStr, "team_$index")
+                } catch (e: Exception) {
+                    PluginManager.getLogger().warning("⚠ Ошибка парсинга спавна команды[$index]: $locStr")
+                    throw e
+                }
             }
 
+            // Ядра
             val coreLocations = mapSection.getStringList("core-locations").mapIndexed { index, locStr ->
-                SpawnLocation.fromString(locStr, "core_$index")
+                try {
+                    SpawnLocation.fromString(locStr, "core_$index")
+                } catch (e: Exception) {
+                    PluginManager.getLogger().warning("⚠ Ошибка парсинга локации ядра[$index]: $locStr")
+                    throw e
+                }
             }
 
+            // Глазосветы
             val eyeblossomLocations = mapSection.getStringList("eyeblossom-locations").mapIndexed { index, locStr ->
-                SpawnLocation.fromString(locStr, "eyeblossom_$index")
+                try {
+                    SpawnLocation.fromString(locStr, "eyeblossom_$index")
+                } catch (e: Exception) {
+                    PluginManager.getLogger().warning("⚠ Ошибка парсинга локации Eyeblossom[$index]: $locStr")
+                    throw e
+                }
             }
 
+            // Скрипун
             val creakingSpawnStr = mapSection.getString("creaking-spawn")
             val creakingSpawnLocation = if (creakingSpawnStr != null) {
-                SpawnLocation.fromString(creakingSpawnStr, "creaking_spawn")
+                try {
+                    SpawnLocation.fromString(creakingSpawnStr, "creaking_spawn")
+                } catch (e: Exception) {
+                    PluginManager.getLogger().warning("⚠ Ошибка парсинга спавна Скрипуна: $creakingSpawnStr")
+                    null
+                }
             } else null
+
+            PluginManager.getLogger().info("✓ Карта '$displayName' загружена успешно")
 
             return MapConfig(
                 mapName,
@@ -105,7 +149,22 @@ data class MapConfig(
         }
 
         fun reload() {
+            if (!file.exists()) {
+                PluginManager.getLogger().warning("⚠ maps-config.yml не найден! Создаю новый...")
+                init()
+                return
+            }
+
             config = YamlConfiguration.loadConfiguration(file)
+            val mapCount = config.getKeys(false).size
+            PluginManager.getLogger().info("✓ maps-config.yml перезагружен! Карт: $mapCount")
+        }
+
+        fun exists(mapName: String): Boolean {
+            if (!::config.isInitialized) {
+                init()
+            }
+            return config.contains(mapName)
         }
     }
 }
