@@ -2,6 +2,7 @@ package ru.joutak.creakywars.game
 
 import org.bukkit.Bukkit
 import org.bukkit.GameMode
+import org.bukkit.Material
 import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.scheduler.BukkitTask
@@ -90,8 +91,14 @@ class Game(
         gameStartTime = System.currentTimeMillis()
         phaseStartTime = gameStartTime
 
-        teams.forEachIndexed { index, team ->
-            val spawnLocation = arena.mapConfig.teamSpawns.getOrNull(index)
+        val activeTeams = teams.filter { it.players.isNotEmpty() }
+
+        if (AdminConfig.debugMode) {
+            PluginManager.getLogger().info("[DEBUG] Активных команд: ${activeTeams.size} из ${teams.size}")
+        }
+
+        activeTeams.forEachIndexed { index, team ->
+            val spawnLocation = arena.mapConfig.teamSpawns.getOrNull(teams.indexOf(team))
             if (spawnLocation != null) {
                 team.getOnlinePlayers().forEach { player ->
                     player.teleport(spawnLocation.toLocation(arena.world))
@@ -114,7 +121,7 @@ class Game(
             teamScoreboard.addPlayer(player)
         }
 
-        CoreManager.initializeCores(this)
+        CoreManager.initializeCores(this, activeTeams)
         ResourceSpawner.startSpawning(this)
         TraderManager.spawnTraders(this)
 
@@ -135,6 +142,10 @@ class Game(
         broadcastMessage("§eНочью собирайте §dглазалии§e, но берегитесь §5Скрипуна§e!")
         broadcastMessage("§eУничтожьте §cсердца§e всех противников!")
         broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
+    }
+
+    fun getActiveTeams(): List<Team> {
+        return teams.filter { it.players.isNotEmpty() }
     }
 
     private fun tick() {
@@ -213,8 +224,8 @@ class Game(
         if (killer != null) {
             val killerData = getPlayerData(killer)
             killerData?.addKill()
-
             broadcastMessage("${team.color}${player.name} §7был убит игроком ${killerData?.team?.color}${killer.name}")
+            transferResourcesToKiller(player, killer)
         } else {
             broadcastMessage("${team.color}${player.name} §7погиб")
         }
@@ -224,14 +235,31 @@ class Game(
             return
         }
 
-        if (!canRespawn() || team.coreDestroyed) {
+        if (team.coreDestroyed) {
+            data.isAlive = false
+            player.gameMode = GameMode.SPECTATOR
+
+            MessageUtils.sendMessage(player, "§c§lВы выбыли из игры!")
+
+            if (killer != null) {
+                val killerData = getPlayerData(killer)
+                killerData?.addFinalKill()
+                broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
+            }
+
+            checkWinCondition()
+            return
+        }
+
+        if (!canRespawn()) {
             if (team.canRespawn()) {
                 team.decrementLives()
                 startRespawnTimer(player, player.location)
             } else {
                 data.isAlive = false
                 player.gameMode = GameMode.SPECTATOR
-                MessageUtils.sendMessage(player, "§cВы выбыли из игры!")
+
+                MessageUtils.sendMessage(player, "§c§lВы выбыли из игры!")
 
                 if (killer != null) {
                     val killerData = getPlayerData(killer)
@@ -244,8 +272,50 @@ class Game(
         }
     }
 
+    private fun transferResourcesToKiller(victim: Player, killer: Player) {
+        val resourceMaterials = setOf(
+            Material.RESIN_CLUMP,
+            Material.RESIN_BRICK,
+            Material.RESIN_BRICKS,
+            Material.OPEN_EYEBLOSSOM
+        )
+
+        var totalTransferred = 0
+        val transferredItems = mutableListOf<String>()
+
+        victim.inventory.contents.forEach { item ->
+            if (item != null && resourceMaterials.contains(item.type)) {
+                val amount = item.amount
+                val displayName = when (item.type) {
+                    Material.RESIN_CLUMP -> "§7Резина"
+                    Material.RESIN_BRICK -> "§6Прочная резина"
+                    Material.RESIN_BRICKS -> "§dРезиновый блок"
+                    Material.OPEN_EYEBLOSSOM -> "§2Открытая глазалия"
+                    else -> item.type.name
+                }
+
+                val leftover = killer.inventory.addItem(item.clone())
+
+                if (leftover.isEmpty()) {
+                    totalTransferred += amount
+                    transferredItems.add("§e$amount§7x $displayName")
+                } else {
+                    val transferred = amount - leftover.values.sumOf { it.amount }
+                    if (transferred > 0) {
+                        totalTransferred += transferred
+                        transferredItems.add("§e$transferred§7x $displayName")
+                    }
+                }
+            }
+        }
+    }
+
+
     private fun startRespawnTimer(player: Player, deathLocation: org.bukkit.Location) {
         respawnTimers[player.uniqueId]?.cancel()
+
+        val data = getPlayerData(player) ?: return
+        val team = data.team ?: return
 
         val delaySeconds = GameConfig.respawnDelaySeconds
 
@@ -257,6 +327,29 @@ class Game(
         var remainingSeconds = delaySeconds
 
         val timerTask = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
+            if (team.coreDestroyed) {
+                respawnTimers[player.uniqueId]?.cancel()
+                respawnTimers.remove(player.uniqueId)
+
+                data.isAlive = false
+                player.gameMode = GameMode.SPECTATOR
+
+                MessageUtils.sendMessage(player, "§c§lВаше ядро уничтожено!")
+                MessageUtils.sendTitle(player, "§c☠ ВЫБЫЛИ ☠", "§eВаше ядро уничтожено")
+                return@Runnable
+            }
+
+            if (!team.canRespawn()) {
+                respawnTimers[player.uniqueId]?.cancel()
+                respawnTimers.remove(player.uniqueId)
+
+                data.isAlive = false
+                player.gameMode = GameMode.SPECTATOR
+
+                MessageUtils.sendMessage(player, "§c§lУ команды закончились жизни!")
+                return@Runnable
+            }
+
             if (remainingSeconds <= 0) {
                 respawnTimers[player.uniqueId]?.cancel()
                 respawnTimers.remove(player.uniqueId)
@@ -271,12 +364,12 @@ class Game(
             )
 
             player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_PLING, 0.5f, 1f)
-
             remainingSeconds--
         }, 0L, 20L)
 
         respawnTimers[player.uniqueId] = timerTask
     }
+
 
     @Suppress("DEPRECATION")
     private fun respawnPlayer(player: Player) {
@@ -302,20 +395,35 @@ class Game(
     }
 
     private fun checkWinCondition() {
-        val aliveTeams = teams.filter { !it.isEliminated() }
+        val aliveTeams = teams.filter { !it.isEliminated(this) }
 
         if (isDebugMode) {
             val currentTime = System.currentTimeMillis()
-            if ((currentTime - gameStartTime) / 1000 % 30 == 0L) {
-                broadcastMessage("§7[DEBUG] Команд в игре: ${aliveTeams.size}, Игроков: ${activePlayers.size}")
+            if ((currentTime - gameStartTime) / 1000 % 5 == 0L) {
+                PluginManager.getLogger().info("[DEBUG] Проверка условий победы:")
+                teams.forEach { team ->
+                    val onlinePlayers = team.getOnlinePlayers()
+                    val alivePlayers = team.getAlivePlayers(this)
+                    PluginManager.getLogger().info(
+                        "[DEBUG]   ${team.name}: ядро=${!team.coreDestroyed}, " +
+                                "онлайн=${onlinePlayers.size}, живых=${alivePlayers.size}, " +
+                                "выбыла=${team.isEliminated(this)}"
+                    )
+                }
+                broadcastMessage("§7[DEBUG] Команд в игре: ${aliveTeams.size} из ${teams.size}")
             }
             return
         }
 
-        if (aliveTeams.size == 1) {
-            endGame(aliveTeams.first())
-        } else if (aliveTeams.isEmpty()) {
-            endGame(null)
+        when {
+            aliveTeams.size == 1 -> {
+                PluginManager.getLogger().info("Игра #${arena.id}: побеждает команда ${aliveTeams.first().name}")
+                endGame(aliveTeams.first())
+            }
+            aliveTeams.isEmpty() -> {
+                PluginManager.getLogger().info("Игра #${arena.id}: ничья, все команды выбыли")
+                endGame(null)
+            }
         }
     }
 
@@ -377,8 +485,10 @@ class Game(
         }
 
         phaseBossBar.remove()
-
         CoreManager.clearCores(this)
+
+        playerData.clear()
+
         GameManager.onGameEnd(this)
     }
 
@@ -413,15 +523,25 @@ class Game(
             broadcastTitle("§c${team.name}", "§eядро уничтожено!")
         }
 
-        broadcastMessage("§c§l!!! §6Ядро команды ${team.color}${team.name} §6уничтожено! §c§l!!!")
+        broadcastMessage("§c§l⚠ §6Ядро команды ${team.color}${team.name} §6уничтожено! §c§l⚠")
 
         team.getOnlinePlayers().forEach { player ->
             val data = getPlayerData(player)
-            if (data != null) {
-                data.isAlive = false
+
+            if (data?.isAlive == true) {
+                MessageUtils.sendMessage(player, "§c§l⚠ ВАШЕ ЯДРО УНИЧТОЖЕНО!")
+                MessageUtils.sendMessage(player, "§eПосле смерти вы не возродитесь!")
+                player.playSound(player.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 0.8f)
+            } else {
+                data?.isAlive = false
                 player.gameMode = GameMode.SPECTATOR
-                MessageUtils.sendMessage(player, "§cВаше ядро уничтожено! Вы выбыли из игры!")
+                MessageUtils.sendMessage(player, "§c§lВы выбыли из игры!")
             }
+        }
+
+        team.players.forEach { uuid ->
+            respawnTimers[uuid]?.cancel()
+            respawnTimers.remove(uuid)
         }
 
         teamScoreboard.update()
@@ -429,7 +549,45 @@ class Game(
         players.forEach {
             it.playSound(it.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f)
         }
+
+        checkWinCondition()
     }
 
     fun getDayNightCycle(): DayNightCycle = dayNightCycle
+
+    fun removePlayer(player: Player) {
+        val uuid = player.uniqueId
+
+        playerData.remove(uuid)
+
+        respawnTimers[uuid]?.cancel()
+        respawnTimers.remove(uuid)
+
+        val team = teams.firstOrNull { it.hasPlayer(uuid) }
+        team?.removePlayer(uuid)
+
+        teamScoreboard.removePlayer(player)
+
+        val mainWorld = Bukkit.getWorlds().firstOrNull()
+        if (mainWorld != null) {
+            player.teleport(mainWorld.spawnLocation)
+        }
+
+        player.inventory.clear()
+        player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
+        player.health = player.maxHealth
+        player.foodLevel = 20
+        player.saturation = 20f
+        player.fireTicks = 0
+        player.gameMode = GameMode.ADVENTURE
+
+        if (AdminConfig.debugMode) {
+            PluginManager.getLogger().info("[DEBUG] Игрок ${player.name} удален из игры")
+        }
+
+        if (playerData.isEmpty()) {
+            PluginManager.getLogger().info("Все игроки покинули игру на арене #${arena.id}")
+            forceEnd()
+        }
+    }
 }

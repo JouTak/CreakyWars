@@ -17,17 +17,19 @@ import java.util.UUID
 
 object CoreManager : Listener {
     private val activeCores = mutableMapOf<Game, MutableMap<Team, Core>>()
-    
+
     fun init() {
         Bukkit.getPluginManager().registerEvents(this, PluginManager.getPlugin())
         PluginManager.getLogger().info("CoreManager инициализирован!")
     }
-    
-    fun initializeCores(game: Game) {
+
+    fun initializeCores(game: Game, teamsToInit: List<Team>) {
         val cores = mutableMapOf<Team, Core>()
-        
-        game.teams.forEachIndexed { index, team ->
-            val coreLocation = game.arena.mapConfig.coreLocations.getOrNull(index)
+
+        teamsToInit.forEach { team ->
+            val teamIndex = game.teams.indexOf(team)
+            val coreLocation = game.arena.mapConfig.coreLocations.getOrNull(teamIndex)
+
             if (coreLocation != null) {
                 val core = Core(game, team, coreLocation)
                 core.spawn()
@@ -36,16 +38,16 @@ object CoreManager : Listener {
                 PluginManager.getLogger().warning("Нет локации ядра для команды ${team.name}")
             }
         }
-        
+
         activeCores[game] = cores
         PluginManager.getLogger().info("Инициализировано ${cores.size} ядер для игры #${game.arena.id}")
     }
-    
+
     fun clearCores(game: Game) {
         activeCores[game]?.values?.forEach { it.remove() }
         activeCores.remove(game)
     }
-    
+
     fun getCore(block: Block): Core? {
         for (cores in activeCores.values) {
             for (core in cores.values) {
@@ -56,12 +58,12 @@ object CoreManager : Listener {
         }
         return null
     }
-    
+
     @EventHandler
     fun onBlockBreak(event: BlockBreakEvent) {
         val player = event.player
         val block = event.block
-        
+
         val core = getCore(block) ?: return
 
         val game = GameManager.getGame(player) ?: return
@@ -77,7 +79,7 @@ object CoreManager : Listener {
 
         game.handleCoreDestroyed(core.team, player)
     }
-    
+
     class Core(
         private val game: Game,
         val team: Team,
@@ -103,16 +105,16 @@ object CoreManager : Listener {
 //                setAI(false)
 //            }
         }
-        
+
         fun isCore(block: Block): Boolean {
             return coreBlock == block
         }
-        
+
         fun destroy(destroyer: Player?) {
             coreBlock?.type = Material.AIR
             hologram?.remove()
         }
-        
+
         fun remove() {
             coreBlock?.type = Material.AIR
             hologram?.remove()

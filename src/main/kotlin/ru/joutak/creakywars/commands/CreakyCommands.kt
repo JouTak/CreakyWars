@@ -27,7 +27,7 @@ class CreakyCommands : CommandExecutor, TabCompleter {
         }
 
         when (args[0].lowercase()) {
-            "join" -> handleJoin(sender)
+            "join" -> handleJoin(sender, args)
             "leave" -> handleLeave(sender)
             "start" -> handleStart(sender)
             "stop" -> handleStop(sender, args)
@@ -83,9 +83,19 @@ class CreakyCommands : CommandExecutor, TabCompleter {
         game.debugEnd(null)
     }
 
-    private fun handleJoin(sender: CommandSender) {
+    private fun handleJoin(sender: CommandSender, args: Array<out String>) {
         if (sender !is Player) {
             sender.sendMessage("§cЭту команду может использовать только игрок!")
+            return
+        }
+
+        if (SpartakiadaManager.isEnabled()) {
+            QueueManager.addPlayer(sender)
+            return
+        }
+
+        if (AdminConfig.debugMode) {
+            QueueManager.addPlayer(sender)
             return
         }
 
@@ -98,19 +108,18 @@ class CreakyCommands : CommandExecutor, TabCompleter {
             return
         }
 
+        if (GameManager.isInGame(sender)) {
+            if (GameManager.removePlayerFromGame(sender)) {
+                return
+            }
+        }
+
         if (QueueManager.isInQueue(sender)) {
             QueueManager.removePlayer(sender)
             return
         }
 
-        val game = GameManager.getGame(sender)
-        if (game != null) {
-            MessageUtils.sendMessage(sender, "§cВы покинули игру!")
-            sender.teleport(Bukkit.getWorlds().first().spawnLocation)
-            // TODO: Обработать выход из активной игры
-        } else {
-            MessageUtils.sendMessage(sender, "§cВы не находитесь в очереди или игре!")
-        }
+        MessageUtils.sendMessage(sender, "§cВы не находитесь ни в игре, ни в очереди!")
     }
 
     private fun handleStart(sender: CommandSender) {
@@ -142,7 +151,6 @@ class CreakyCommands : CommandExecutor, TabCompleter {
             return
         }
 
-        // Принудительный старт игры
         val players = QueueManager.getQueueSize()
         sender.sendMessage("§aПринудительный запуск игры с $players игроками...")
         QueueManager.checkQueue()
@@ -225,7 +233,7 @@ class CreakyCommands : CommandExecutor, TabCompleter {
             ScenarioConfig.reload()
             SpartakiadaManager.reload()
 
-            ArenaManager.loadTemplate()
+            ArenaManager.setTemplate()
 
             sender.sendMessage("§aКонфигурация успешно перезагружена!")
             if (AdminConfig.debugMode) {
