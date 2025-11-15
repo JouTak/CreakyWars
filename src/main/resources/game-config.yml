@@ -5,7 +5,7 @@ day-night-cycle:
   day-duration-ticks: 6000
   night-duration-ticks: 6000
   eyeblossom-open-percent: 0.5
-  creaking-aggro-radius: 30.0
+  creaking-aggro-radius: 60.0
 
 respawn:
   delay-seconds: 15
@@ -97,33 +97,25 @@ trades:
     display-name: "Откидывающая палка"
     category: "swords"
     enchantments:
-      - "KNOCKBACK:2"
-
-  knockback_stick_alt:
-    cost: "rubber_high:5"
-    result: "STICK:1"
-    display-name: "Откидывающая палка"
-    category: "swords"
-    enchantments:
-      - "KNOCKBACK:2"
+      - "KNOCKBACK:1"
 
   # === БРОНЯ ===
   chainmail_armor:
     cost: "rubber_low:40"
-    result: "CHAINMAIL_CHESTPLATE:1"
-    display-name: "Кольчужная броня (полный комплект)"
+    result: "CHAINMAIL_LEGGINGS:1"
+    display-name: "Кольчужная броня"
     category: "armor"
 
   iron_armor:
     cost: "rubber_mid:12"
-    result: "IRON_CHESTPLATE:1"
-    display-name: "Железная броня (полный комплект)"
+    result: "IRON_LEGGINGS:1"
+    display-name: "Железная броня"
     category: "armor"
 
   diamond_armor:
     cost: "eyeblossom:6"
-    result: "DIAMOND_CHESTPLATE:1"
-    display-name: "Алмазная броня (полный комплект)"
+    result: "DIAMOND_LEGGINGS:1"
+    display-name: "Алмазная броня"
     category: "armor"
 
   # === ИНСТРУМЕНТЫ ===
@@ -196,6 +188,6 @@ trades:
 
   ender_eye:
     cost: "eyeblossom:4"
-    result: "ENDERPEARL:1"
+    result: "ENDER_PEARL:1"
     display-name: "Око Края"
     category: "special"
