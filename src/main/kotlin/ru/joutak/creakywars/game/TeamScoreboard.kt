@@ -18,12 +18,12 @@ class TeamScoreboard(private val game: Game) {
 
     fun update() {
         scoreboard.entries.forEach { scoreboard.resetScores(it) }
+        val activeTeams = game.getActiveTeams()
+        var score = activeTeams.size
 
-        var score = game.teams.size
-
-        game.teams.forEach { team ->
+        activeTeams.forEach { team ->
             val status = when {
-                team.isEliminated() -> "§c§m${team.color}${team.name} §c✗"
+                team.isEliminated(game) -> "§c§m${team.name} §c✗"
                 team.coreDestroyed -> "${team.color}${team.name} §c✗"
                 else -> "${team.color}${team.name} §a✓"
             }

@@ -1,6 +1,7 @@
 package ru.joutak.creakywars.game
 
 import org.bukkit.ChatColor
+import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import java.util.UUID
@@ -30,8 +31,25 @@ data class Team(
         return players.mapNotNull { org.bukkit.Bukkit.getPlayer(it) }
     }
 
-    fun isEliminated(): Boolean {
-        return coreDestroyed && getOnlinePlayers().isEmpty()
+    fun getAlivePlayers(game: Game): List<Player> {
+        return getOnlinePlayers().filter { player ->
+            val playerData = game.getPlayerData(player)
+            playerData?.isAlive == true && player.gameMode != GameMode.SPECTATOR
+        }
+    }
+
+    fun isEliminated(game: Game): Boolean {
+        val onlinePlayers = getOnlinePlayers()
+        if (onlinePlayers.isEmpty()) {
+            return true
+        }
+
+        if (coreDestroyed) {
+            val alivePlayers = getAlivePlayers(game)
+            return alivePlayers.isEmpty()
+        }
+
+        return false
     }
 
     fun canRespawn(): Boolean {
@@ -49,14 +67,10 @@ data class Team(
         fun createDefaultTeams(count: Int): List<Team> {
             val teams = mutableListOf<Team>()
             val colors = listOf(
-                Triple(ChatColor.RED, "Красные", Material.RED_TERRACOTTA),
+                Triple(ChatColor.GOLD, "Оранжевые", Material.ORANGE_TERRACOTTA),
                 Triple(ChatColor.BLUE, "Синие", Material.BLUE_TERRACOTTA),
-                Triple(ChatColor.GREEN, "Зелёные", Material.GREEN_TERRACOTTA),
-                Triple(ChatColor.YELLOW, "Жёлтые", Material.YELLOW_TERRACOTTA),
-                Triple(ChatColor.AQUA, "Голубые", Material.LIGHT_BLUE_TERRACOTTA),
                 Triple(ChatColor.LIGHT_PURPLE, "Розовые", Material.PINK_TERRACOTTA),
-                Triple(ChatColor.WHITE, "Белые", Material.WHITE_TERRACOTTA),
-                Triple(ChatColor.GRAY, "Серые", Material.GRAY_TERRACOTTA)
+                Triple(ChatColor.GREEN, "Зелёные", Material.GREEN_TERRACOTTA),
             )
 
             for (i in 0 until minOf(count, colors.size)) {
