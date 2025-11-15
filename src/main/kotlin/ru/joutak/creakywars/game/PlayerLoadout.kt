@@ -4,6 +4,7 @@ import org.bukkit.Color
 import org.bukkit.Material
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.LeatherArmorMeta
 import ru.joutak.creakywars.utils.MessageUtils
@@ -12,107 +13,115 @@ data class PlayerLoadout(
     val player: Player,
     val team: Team
 ) {
-    // Базовые предметы (всегда сохраняются)
     private var helmet: ItemStack = createLeatherArmor(Material.LEATHER_HELMET)
     private var chestplate: ItemStack = createLeatherArmor(Material.LEATHER_CHESTPLATE)
-    private var leggings: ItemStack? = createLeatherArmor(Material.LEATHER_LEGGINGS)
-    private var boots: ItemStack? = createLeatherArmor(Material.LEATHER_BOOTS)
+    private var leggings: ItemStack = createLeatherArmor(Material.LEATHER_LEGGINGS)
+    private var boots: ItemStack = createLeatherArmor(Material.LEATHER_BOOTS)
     private var sword: ItemStack = ItemStack(Material.WOODEN_SWORD)
-
-    // Купленные улучшения (сохраняются после смерти)
-    private val permanentUpgrades = mutableSetOf<String>()
+    private val permanentArmorUpgrades = mutableSetOf<String>()
 
     private fun createLeatherArmor(material: Material): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta as? LeatherArmorMeta ?: return item
+        val color = when (team.woolColor) {
+            Material.ORANGE_TERRACOTTA -> Color.ORANGE
+            Material.BLUE_TERRACOTTA -> Color.BLUE
+            Material.PINK_TERRACOTTA -> Color.FUCHSIA
+            Material.GREEN_TERRACOTTA -> Color.GREEN
+            else -> Color.WHITE
+        }
 
-        meta.setColor(getTeamColor(team.woolColor))
+        meta.setColor(color)
 
         @Suppress("DEPRECATION")
-        meta.setDisplayName("${team.color}Броня команды")
-
+        meta.setDisplayName("${team.color}Броня команды ${team.name}")
         meta.isUnbreakable = true
-
+        meta.addEnchant(Enchantment.BINDING_CURSE, 1, true)
+        meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
         item.itemMeta = meta
         return item
     }
 
-    private fun getTeamColor(woolColor: Material): Color {
-        return when (woolColor) {
-            Material.RED_WOOL -> Color.RED
-            Material.BLUE_WOOL -> Color.BLUE
-            Material.GREEN_WOOL -> Color.GREEN
-            Material.YELLOW_WOOL -> Color.YELLOW
-            Material.LIGHT_BLUE_WOOL -> Color.AQUA
-            Material.PINK_WOOL -> Color.FUCHSIA
-            Material.WHITE_WOOL -> Color.WHITE
-            Material.GRAY_WOOL -> Color.GRAY
-            else -> Color.WHITE
-        }
-    }
-
     fun giveDefaultLoadout() {
         player.inventory.clear()
-
         player.inventory.helmet = helmet
         player.inventory.chestplate = chestplate
         player.inventory.leggings = leggings
         player.inventory.boots = boots
-
         player.inventory.addItem(sword)
     }
 
     fun restoreAfterDeath() {
         player.inventory.clear()
-
         player.inventory.helmet = helmet
         player.inventory.chestplate = chestplate
         player.inventory.leggings = leggings
         player.inventory.boots = boots
-
         player.inventory.addItem(ItemStack(Material.WOODEN_SWORD))
     }
 
-    fun upgradeArmor(armorType: String, item: ItemStack) {
+    fun upgradeArmor(armorType: String, item: ItemStack, silent: Boolean = false) {
+        val upgradedItem = item.clone()
+        val meta = upgradedItem.itemMeta
+
+        meta?.isUnbreakable = true
+
+        meta?.addEnchant(Enchantment.BINDING_CURSE, 1, true)
+        meta?.addItemFlags(ItemFlag.HIDE_ENCHANTS)
+
+        @Suppress("DEPRECATION")
+        meta?.setDisplayName("${team.color}${getArmorName(armorType)}")
+
+        upgradedItem.itemMeta = meta
+
         when (armorType.lowercase()) {
             "leggings" -> {
-                leggings = item.clone()
-                player.inventory.leggings = item
-                permanentUpgrades.add("leggings_${item.type.name}")
+                leggings = upgradedItem.clone()
+                player.inventory.leggings = upgradedItem
+                permanentArmorUpgrades.add("leggings_${item.type.name}")
             }
             "boots" -> {
-                boots = item.clone()
-                player.inventory.boots = item
-                permanentUpgrades.add("boots_${item.type.name}")
+                boots = upgradedItem.clone()
+                player.inventory.boots = upgradedItem
+                permanentArmorUpgrades.add("boots_${item.type.name}")
             }
             "helmet" -> {
-                helmet = item.clone()
-                player.inventory.helmet = item
-                permanentUpgrades.add("helmet_${item.type.name}")
+                helmet = upgradedItem.clone()
+                player.inventory.helmet = upgradedItem
+                permanentArmorUpgrades.add("helmet_${item.type.name}")
             }
             "chestplate" -> {
-                chestplate = item.clone()
-                player.inventory.chestplate = item
-                permanentUpgrades.add("chestplate_${item.type.name}")
+                chestplate = upgradedItem.clone()
+                player.inventory.chestplate = upgradedItem
+                permanentArmorUpgrades.add("chestplate_${item.type.name}")
             }
         }
 
-        MessageUtils.sendMessage(player, "§aБроня улучшена! Она сохранится после смерти.")
+        if (!silent) {
+            MessageUtils.sendMessage(player, "§aБроня улучшена! Она сохранится после смерти.")
+        }
+    }
+
+    private fun getArmorName(armorType: String): String {
+        return when (armorType.lowercase()) {
+            "helmet" -> "Шлем"
+            "chestplate" -> "Кираса"
+            "leggings" -> "Поножи"
+            "boots" -> "Ботинки"
+            else -> "Броня"
+        }
     }
 
     fun upgradeSword(newSword: ItemStack) {
-        sword = newSword.clone()
-
         for (i in 0 until player.inventory.size) {
             val item = player.inventory.getItem(i)
             if (item != null && isSword(item.type)) {
-                player.inventory.setItem(i, newSword)
+                player.inventory.setItem(i, newSword.clone())
                 break
             }
         }
 
-        permanentUpgrades.add("sword_${newSword.type.name}")
-        MessageUtils.sendMessage(player, "§aМеч улучшен! После смерти вернется деревянный.")
+        MessageUtils.sendMessage(player, "§aМеч улучшен! §eПосле смерти вернется деревянный.")
     }
 
     private fun isSword(material: Material): Boolean {
@@ -120,6 +129,6 @@ data class PlayerLoadout(
     }
 
     fun isPermanentUpgrade(upgrade: String): Boolean {
-        return permanentUpgrades.contains(upgrade)
+        return permanentArmorUpgrades.contains(upgrade)
     }
 }
