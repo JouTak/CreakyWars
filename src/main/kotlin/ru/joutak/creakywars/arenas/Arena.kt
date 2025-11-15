@@ -17,4 +17,3 @@ data class Arena(
         return state == ArenaState.WAITING
     }
 }
-

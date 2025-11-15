@@ -1,176 +1,52 @@
 package ru.joutak.creakywars.arenas
 
-import org.bukkit.Bukkit
-import org.bukkit.Difficulty
-import org.bukkit.GameRule
-import org.bukkit.World
+import com.onarandombox.MultiverseCore.MultiverseCore
+import org.bukkit.*
 import ru.joutak.creakywars.config.AdminConfig
 import ru.joutak.creakywars.config.MapConfig
 import ru.joutak.creakywars.utils.PluginManager
 import java.io.File
 
 object ArenaManager {
-    private val arenas = mutableListOf<Arena>()
+    private val arenas = mutableMapOf<String, Arena>()
     private var nextArenaId = 1
     private var template: World? = null
+    private lateinit var multiverseCore: MultiverseCore
 
     fun init() {
+        val mvPlugin = Bukkit.getPluginManager().getPlugin("Multiverse-Core")
+        if (mvPlugin == null || mvPlugin !is MultiverseCore) {
+            PluginManager.getLogger().severe("Multiverse-Core не найден! Плагин не может работать без него.")
+            return
+        }
+        multiverseCore = mvPlugin
+
         deleteExistingArenas()
-        loadTemplate()
-        PluginManager.getLogger().info("ArenaManager инициализирован!")
+        setTemplate()
+        PluginManager.getLogger().info("✓ ArenaManager инициализирован!")
     }
 
-    fun loadTemplate() {
+    fun setTemplate() {
         val templateName = AdminConfig.templateWorldName
         template = Bukkit.getWorld(templateName)
 
         if (template == null) {
-            PluginManager.getLogger().warning("Шаблонный мир '$templateName' не найден! Попытка создать...")
-
-            val created = Bukkit.getServer().dispatchCommand(
-                Bukkit.getConsoleSender(),
-                "mv create $templateName normal -t flat"
+            PluginManager.getLogger().severe(
+                "Отсутствует мир $templateName! Проверьте наличие мира с ареной и укажите верное название."
             )
-
-            if (created) {
-                Thread.sleep(2000)
-                template = Bukkit.getWorld(templateName)
-            }
-
-            if (template == null) {
-                PluginManager.getLogger().warning("§e╔════════════════════════════════════════════════╗")
-                PluginManager.getLogger().warning("§e║ Не удалось создать шаблонный мир автоматически║")
-                PluginManager.getLogger().warning("§e║                                                ║")
-                PluginManager.getLogger().warning("§e║ Создайте командой:                            ║")
-                PluginManager.getLogger().warning("§e║ §f/mv create $templateName normal -t flat§e      ║")
-                PluginManager.getLogger().warning("§e║                                                ║")
-                PluginManager.getLogger().warning("§e║ После создания:                               ║")
-                PluginManager.getLogger().warning("§e║ §f/cw reload§e                                   ║")
-                PluginManager.getLogger().warning("§e╚════════════════════════════════════════════════╝")
-                return
-            }
-        }
-
-        configureWorld(template!!)
-        setupTemplateStructure(template!!)
-        PluginManager.getLogger().info("§a✓ Шаблонный мир '$templateName' готов к использованию!")
-    }
-
-    fun getArenas(): List<Arena> = arenas.toList()
-
-    fun getAvailableArena(): Arena? = arenas.firstOrNull { it.isAvailable() }
-
-    fun getArena(world: World): Arena? = arenas.firstOrNull { it.world == world }
-
-    fun getArena(id: Int): Arena? = arenas.firstOrNull { it.id == id }
-
-    fun isArena(world: World): Boolean = arenas.any { it.world == world }
-
-    private fun setupTemplateStructure(world: World) {
-        val spawnLocation = world.getBlockAt(0, 65, 0).location
-        world.setSpawnLocation(spawnLocation)
-
-        if (AdminConfig.debugMode) {
-            createTestPlatforms(world)
+        } else {
+            configureWorld(template!!)
+            PluginManager.getLogger().info("✓ Шаблонный мир '$templateName' готов к использованию!")
         }
     }
 
-    private fun createTestPlatforms(world: World) {
-        val platformLocations = listOf(
-            Pair(40, 0), Pair(-40, 0), Pair(0, 40), Pair(0, -40)
-        )
+    fun getArenas(): Collection<Arena> = arenas.values
 
-        val platformMaterial = org.bukkit.Material.STONE
+    fun getArena(worldName: String): Arena? = arenas[worldName]
 
-        // Платформы команд
-        for ((x, z) in platformLocations) {
-2
-            for (dx in -5..5) {
-                for (dz in -5..5) {
-                    val block = world.getBlockAt(x + dx, 64, z + dz)
-                    if (block.type == org.bukkit.Material.AIR) {
-                        block.type = platformMaterial
-                    }
-                }
-            }
-        }
-        for (x in -10..10) {
-            for (z in -10..10) {
-                val block = world.getBlockAt(x, 60, z)
-                if (block.type == org.bukkit.Material.AIR) {
-                    block.type = org.bukkit.Material.STONE
-                }
-            }
-        }
+    fun getArena(world: World): Arena? = arenas[world.name]
 
-        PluginManager.getLogger().info("§a✓ Созданы тестовые платформы (4 базы + центр 20x20)")
-    }
-
-    fun createArena(mapName: String): Arena {
-        if (template == null) {
-            throw NullPointerException("Шаблонный мир не загружен! Выполните: /mv create ${AdminConfig.templateWorldName} normal -t flat, затем /cw reload")
-        }
-
-        val worldName = "cw_arena_${nextArenaId}"
-
-        val existingWorldFolder = File(Bukkit.getWorldContainer(), worldName)
-        if (existingWorldFolder.exists()) {
-            PluginManager.getLogger().warning("Мир $worldName уже существует! Удаляем...")
-            deleteWorldSync(worldName)
-            Thread.sleep(2000)
-        }
-
-        val success = cloneWorldWithMultiverse(template!!.name, worldName)
-        if (!success) {
-            throw Exception("Не удалось склонировать мир через Multiverse!")
-        }
-
-        var world = Bukkit.getWorld(worldName)
-        var attempts = 0
-        while (world == null && attempts < 50) {
-            Thread.sleep(100)
-            world = Bukkit.getWorld(worldName)
-            attempts++
-        }
-
-        if (world == null) {
-            throw Exception("Не удалось загрузить скопированный мир!")
-        }
-
-        configureWorld(world)
-
-        val mapConfig = MapConfig.load(mapName)
-        val arena = Arena(nextArenaId, world, mapConfig)
-
-        arenas.add(arena)
-        nextArenaId++
-
-        PluginManager.getLogger().info("Создана арена #${arena.id} с картой $mapName")
-        return arena
-    }
-
-    private fun cloneWorldWithMultiverse(sourceWorldName: String, targetWorldName: String): Boolean {
-        return try {
-            PluginManager.getLogger().info("Клонирование мира $sourceWorldName -> $targetWorldName через Multiverse...")
-
-            val success = Bukkit.getServer().dispatchCommand(
-                Bukkit.getConsoleSender(),
-                "mv clone $sourceWorldName $targetWorldName"
-            )
-
-            if (success) {
-                PluginManager.getLogger().info("§aМир успешно склонирован!")
-            } else {
-                PluginManager.getLogger().warning("§eКоманда клонирования вернула false, но мир может быть создан")
-            }
-
-            true
-        } catch (e: Exception) {
-            PluginManager.getLogger().severe("§cОшибка при клонировании мира: ${e.message}")
-            e.printStackTrace()
-            false
-        }
-    }
+    fun isArena(world: World): Boolean = arenas.containsKey(world.name)
 
     private fun configureWorld(world: World) {
         world.difficulty = Difficulty.NORMAL
@@ -192,18 +68,64 @@ object ArenaManager {
         world.setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, true)
         world.setGameRule(GameRule.DO_MOB_SPAWNING, false)
         world.setGameRule(GameRule.NATURAL_REGENERATION, true)
+        world.setGameRule(GameRule.DO_FIRE_TICK, false)
 
         world.worldBorder.size = AdminConfig.worldBorderSize
-        world.worldBorder.center = world.spawnLocation
+        world.worldBorder.center = Location(world, 0.0, 64.0, 0.0)
+    }
+
+    fun createArena(mapName: String): Arena {
+        if (template == null) {
+            throw NullPointerException("Шаблонный мир не загружен! Создайте мир ${AdminConfig.templateWorldName}")
+        }
+
+        val worldName = "cw_arena_${nextArenaId}"
+
+        if (!multiverseCore.mvWorldManager.cloneWorld(template!!.name, worldName)) {
+            throw Exception("Не удалось склонировать мир! Проверьте логи плагина Multiverse.")
+        }
+
+        val world = Bukkit.getWorld(worldName)
+            ?: throw Exception("Не удалось загрузить склонированный мир $worldName")
+
+        configureWorld(world)
+
+        val mapConfig = MapConfig.load(mapName)
+        val arena = Arena(nextArenaId, world, mapConfig)
+
+        arenas[worldName] = arena
+        nextArenaId++
+
+        PluginManager.getLogger().info("✓ Создана арена #${arena.id} с картой $mapName")
+        return arena
     }
 
     fun deleteArena(arena: Arena) {
-        arenas.remove(arena)
-        deleteWorld(arena.worldName)
+        deleteArena(arena.worldName)
+    }
+
+    fun deleteArena(worldName: String) {
+        val mvWorldManager = multiverseCore.mvWorldManager
+        if (mvWorldManager.isMVWorld(worldName)) {
+            mvWorldManager.deleteWorld(worldName)
+        } else {
+            Bukkit.getScheduler().runTaskLater(
+                PluginManager.getPlugin(),
+                Runnable {
+                    if (deleteWorldFolder(worldName)) {
+                        PluginManager.getLogger().info("✓ Удаление арены $worldName прошло успешно!")
+                    } else {
+                        PluginManager.getLogger().warning("⚠ Не удалось удалить папку с ареной $worldName!")
+                    }
+                },
+                20L
+            )
+        }
+        arenas.remove(worldName)
     }
 
     fun deleteAllArenas() {
-        arenas.toList().forEach { deleteArena(it) }
+        arenas.keys.toList().forEach { deleteArena(it) }
     }
 
     private fun deleteExistingArenas() {
@@ -213,91 +135,19 @@ object ArenaManager {
         }?.filterNotNull() ?: return
 
         for (dir in arenaDirs) {
-            deleteWorld(dir.name)
+            val name = dir.name
+            val mvWorldManager = multiverseCore.mvWorldManager
+            if (mvWorldManager.isMVWorld(name)) {
+                mvWorldManager.deleteWorld(name)
+            } else {
+                deleteWorldFolder(name)
+            }
         }
     }
 
-    private fun deleteWorldSync(worldName: String) {
-        try {
-            val world = Bukkit.getWorld(worldName)
-            world?.players?.forEach { player ->
-                player.teleport(Bukkit.getWorlds().first().spawnLocation)
-            }
-
-            val removed = Bukkit.getServer().dispatchCommand(
-                Bukkit.getConsoleSender(),
-                "mv remove $worldName"
-            )
-
-            if (removed) {
-                PluginManager.getLogger().info("Мир $worldName выгружен через Multiverse")
-            }
-
-            Thread.sleep(500)
-
-            val worldFolder = File(Bukkit.getWorldContainer(), worldName)
-            if (worldFolder.exists()) {
-                worldFolder.deleteRecursively()
-                PluginManager.getLogger().info("Папка мира $worldName удалена")
-            }
-        } catch (e: Exception) {
-            PluginManager.getLogger().severe("Ошибка при синхронном удалении мира $worldName: ${e.message}")
-        }
-    }
-
-    private fun deleteWorld(worldName: String) {
-        try {
-            val world = Bukkit.getWorld(worldName)
-            world?.players?.forEach { player ->
-                player.teleport(Bukkit.getWorlds().first().spawnLocation)
-            }
-
-            Bukkit.getScheduler().runTaskLater(
-                PluginManager.getPlugin(),
-                Runnable {
-                    val removed = Bukkit.getServer().dispatchCommand(
-                        Bukkit.getConsoleSender(),
-                        "mv remove $worldName"
-                    )
-
-                    if (removed) {
-                        PluginManager.getLogger().info("Мир $worldName успешно удален")
-                    }
-
-                    Bukkit.getScheduler().runTaskLater(
-                        PluginManager.getPlugin(),
-                        Runnable {
-                            deleteWorldFolder(worldName)
-                        },
-                        40L
-                    )
-                },
-                20L
-            )
-        } catch (e: Exception) {
-            PluginManager.getLogger().severe("Ошибка при удалении мира $worldName: ${e.message}")
-        }
-    }
-
-    private fun deleteWorldFolder(worldName: String) {
+    private fun deleteWorldFolder(worldName: String): Boolean {
         val worldFolder = File(Bukkit.getWorldContainer(), worldName)
-        if (!worldFolder.exists()) return
-
-        var attempts = 0
-        while (worldFolder.exists() && attempts < 5) {
-            try {
-                Thread.sleep(1000)
-                if (worldFolder.deleteRecursively()) {
-                    PluginManager.getLogger().info("Папка мира $worldName удалена")
-                    break
-                }
-                attempts++
-            } catch (e: Exception) {
-                attempts++
-                if (attempts >= 5) {
-                    PluginManager.getLogger().warning("Не удалось удалить папку $worldName после $attempts попыток")
-                }
-            }
-        }
+        if (!worldFolder.exists()) return true
+        return worldFolder.deleteRecursively()
     }
 }
