@@ -9,7 +9,7 @@ phases:
     respawn-enabled: true
     border-shrink: false
     border-shrink-speed: 0.0
-    border-final-size: 100.0
+    border-final-size: 261.0
     start-message: "Игра началась! Собирайте ресурсы и защищайте свое ядро!"
     end-message: "Фаза 1 завершена!"
 
@@ -20,7 +20,7 @@ phases:
     respawn-enabled: true
     border-shrink: false
     border-shrink-speed: 0.0
-    border-final-size: 100.0
+    border-final-size: 261.0
     start-message: "§6§lФАЗА 2! §eРесурсы спавнятся в 1.5 раза быстрее!"
     end-message: "Фаза 2 завершена!"
 
@@ -31,7 +31,7 @@ phases:
     respawn-enabled: false
     border-shrink: false
     border-shrink-speed: 0.0
-    border-final-size: 100.0
+    border-final-size: 261.0
     start-message: "§c§lФАЗА 3! §eВозрождение отключено!"
     end-message: "Начинается финал!"
 
@@ -41,7 +41,7 @@ phases:
     resource-multiplier: 2.0
     respawn-enabled: false
     border-shrink: true
-    border-shrink-speed: 0.2
-    border-final-size: 40.0
+    border-shrink-speed: 0.3
+    border-final-size: 71.0
     start-message: "§4§lФИНАЛ! §eГраница мира сужается!"
     end-message: "Игра завершена!"

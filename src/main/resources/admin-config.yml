@@ -1,15 +1,13 @@
 # Административный конфиг CreakyWars
 # Для настройки серверной части игры
 debug:
-  enabled: true
+  enabled: false
 
 maps:
-  # Список доступных карт (имена папок в директории maps/)
   available:
-    - cw_test
+    - game
 
 games:
-  # Максимальное количество параллельных игр
   max-parallel: 1
 
 teams:
@@ -22,10 +20,10 @@ players:
   # Максимальное количество игроков в игре
   max: 16
   # Процент игроков от максимума для начала игры
-  min-percent-to-start: 1
+  min-percent-to-start: 0.125
 
 world:
   # Размер границы мира
-  border-size: 100.0
+  border-size: 261.0
   # Название мира-шаблона
-  template-name: cw_test
+  template-name: game
