@@ -22,7 +22,6 @@ object MessageUtils {
         try {
             player.sendActionBar(message)
         } catch (e: Exception) {
-            // пропускаем
         }
     }
 }
