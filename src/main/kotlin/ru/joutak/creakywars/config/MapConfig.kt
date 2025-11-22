@@ -17,7 +17,7 @@ data class MapConfig(
     val teamSpawns: List<SpawnLocation>,
     val coreLocations: List<SpawnLocation>,
     val eyeblossomLocations: List<SpawnLocation>,
-    val creakingSpawnLocation: SpawnLocation?
+    val creakingSpawnLocations: List<SpawnLocation>
 ) {
     companion object {
         private lateinit var config: FileConfiguration
@@ -112,16 +112,15 @@ data class MapConfig(
                 }
             }
 
-            // Скрипун
-            val creakingSpawnStr = mapSection.getString("creaking-spawn")
-            val creakingSpawnLocation = if (creakingSpawnStr != null) {
+            // Скрипуны
+            val creakingSpawnLocations = mapSection.getStringList("creaking-spawns").mapIndexed { index, locStr ->
                 try {
-                    SpawnLocation.fromString(creakingSpawnStr, "creaking_spawn")
+                    SpawnLocation.fromString(locStr, "creaking_spawn_$index")
                 } catch (e: Exception) {
-                    PluginManager.getLogger().warning("⚠ Ошибка парсинга спавна Скрипуна: $creakingSpawnStr")
-                    null
+                    PluginManager.getLogger().warning("⚠ Ошибка парсинга спавна Скрипуна[$index]: $locStr")
+                    throw e
                 }
-            } else null
+            }
 
             PluginManager.getLogger().info("✓ Карта '$displayName' загружена успешно")
 
@@ -136,7 +135,7 @@ data class MapConfig(
                 teamSpawns,
                 coreLocations,
                 eyeblossomLocations,
-                creakingSpawnLocation
+                creakingSpawnLocations
             )
         }
 
