@@ -78,6 +78,7 @@ class CreakyWars : JavaPlugin() {
         pm.registerEvents(CoreListener(), this)
         pm.registerEvents(EyeblossomListener(), this)
         pm.registerEvents(TraderListener(), this)
+        pm.registerEvents(CreakingListener(), this)
         logger.info("✓ Все слушатели зарегистрированы!")
 
         // === ФИНАЛЬНОЕ СООБЩЕНИЕ ===
