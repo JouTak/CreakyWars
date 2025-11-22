@@ -183,9 +183,11 @@ class CreakyCommands : CommandExecutor, TabCompleter {
                 return
             }
 
-            val game = GameManager.getGame(arena)
+            val game = GameManager.getActiveGames().firstOrNull { it.arena.id == arenaId }
+
             if (game == null) {
-                sender.sendMessage("§cНа арене #$arenaId нет активной игры!")
+                sender.sendMessage("§cАктивная игра с ID арены $arenaId не найдена!")
+                sender.sendMessage("§7Используйте §e/cw info §7для просмотра активных игр")
                 return
             }
 
@@ -550,7 +552,7 @@ class CreakyCommands : CommandExecutor, TabCompleter {
                 "stop" -> {
                     if (sender.hasPermission("creakywars.admin")) {
                         val options = mutableListOf("all")
-                        options.addAll(ArenaManager.getArenas().map { it.id.toString() })
+                        options.addAll(GameManager.getActiveGames().map { it.arena.id.toString() })
                         return options.filter { it.startsWith(args[1].lowercase()) }
                     }
                 }
