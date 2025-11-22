@@ -3,20 +3,23 @@ package ru.joutak.creakywars.core
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.block.Block
+import org.bukkit.block.data.type.CreakingHeart
 import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
+import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.game.Game
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.game.Team
 import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.creakywars.utils.SpawnLocation
-import java.util.UUID
 
 object CoreManager : Listener {
     private val activeCores = mutableMapOf<Game, MutableMap<Team, Core>>()
+    private val coreCheckTasks = mutableMapOf<Game, BukkitTask>()
 
     fun init() {
         Bukkit.getPluginManager().registerEvents(this, PluginManager.getPlugin())
@@ -40,10 +43,35 @@ object CoreManager : Listener {
         }
 
         activeCores[game] = cores
+
+        startCoreCheck(game)
+
         PluginManager.getLogger().info("Инициализировано ${cores.size} ядер для игры #${game.arena.id}")
     }
 
+    private fun startCoreCheck(game: Game) {
+        val task = Bukkit.getScheduler().runTaskTimer(
+            PluginManager.getPlugin(),
+            Runnable {
+                val cores = activeCores[game] ?: return@Runnable
+
+                cores.values.forEach { core ->
+                    if (!core.isDestroyed) {
+                        core.checkAndFix()
+                    }
+                }
+            },
+            20L,
+            20L
+        )
+
+        coreCheckTasks[game] = task
+    }
+
     fun clearCores(game: Game) {
+        coreCheckTasks[game]?.cancel()
+        coreCheckTasks.remove(game)
+
         activeCores[game]?.values?.forEach { it.remove() }
         activeCores.remove(game)
     }
@@ -59,7 +87,7 @@ object CoreManager : Listener {
         return null
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     fun onBlockBreak(event: BlockBreakEvent) {
         val player = event.player
         val block = event.block
@@ -87,12 +115,15 @@ object CoreManager : Listener {
     ) {
         private var coreBlock: Block? = null
         private var hologram: ArmorStand? = null
+        var isDestroyed: Boolean = false
+            private set
 
         fun spawn() {
             val loc = location.toLocation(game.arena.world)
             coreBlock = loc.block
 
             coreBlock?.type = Material.CREAKING_HEART
+            setActive(true)
 
             val hologramLoc = loc.clone().add(0.5, 1.5, 0.5)
 //            hologram = game.arena.world.spawn(hologramLoc, ArmorStand::class.java).apply {
@@ -106,16 +137,59 @@ object CoreManager : Listener {
 //            }
         }
 
+        fun checkAndFix() {
+            val block = coreBlock ?: return
+
+            if (block.type != Material.CREAKING_HEART) {
+                PluginManager.getLogger().warning("Ядро команды ${team.name} было заменено! Восстанавливаем...")
+                block.type = Material.CREAKING_HEART
+                setActive(true)
+                return
+            }
+
+            if (!isActive()) {
+                setActive(true)
+            }
+        }
+
+        private fun isActive(): Boolean {
+            val block = coreBlock ?: return false
+            if (block.type != Material.CREAKING_HEART) return false
+
+            val blockData = block.blockData
+            if (blockData is org.bukkit.block.data.type.CreakingHeart) {
+                return blockData.isActive
+            }
+            return false
+        }
+
+        private fun setActive(active: Boolean) {
+            val block = coreBlock ?: return
+            if (block.type != Material.CREAKING_HEART) return
+
+            val blockData = block.blockData
+            if (blockData is org.bukkit.block.data.type.CreakingHeart) {
+                blockData.isActive = active
+                block.blockData = blockData
+            }
+        }
+
         fun isCore(block: Block): Boolean {
             return coreBlock == block
         }
 
         fun destroy(destroyer: Player?) {
-            coreBlock?.type = Material.AIR
-            hologram?.remove()
+            isDestroyed = true
+            setActive(false)
+
+            Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
+                coreBlock?.type = Material.AIR
+                hologram?.remove()
+            }, 20L)
         }
 
         fun remove() {
+            isDestroyed = true
             coreBlock?.type = Material.AIR
             hologram?.remove()
         }
