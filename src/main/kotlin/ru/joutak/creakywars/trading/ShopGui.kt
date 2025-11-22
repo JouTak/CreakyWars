@@ -223,29 +223,62 @@ object ShopGui : Listener {
     }
 
     private fun createPurchasedItem(trade: Trade, team: ru.joutak.creakywars.game.Team?): ItemStack {
-        val baseItem = if (team != null && shouldUseTeamColor(trade.result.type)) {
+        var item = if (team != null && shouldUseTeamColor(trade.result.type)) {
             convertToTeamColor(trade.result.clone(), team.woolColor)
         } else {
             trade.result.clone()
         }
 
-        if (isBlock(baseItem.type)) {
-            return ItemStack(baseItem.type, baseItem.amount)
+        val isToolOrWeaponOrArmor = when {
+            item.type.name.endsWith("_SWORD") -> true
+            item.type.name.endsWith("_PICKAXE") -> true
+            item.type.name.endsWith("_AXE") -> true
+            item.type.name.endsWith("_SHOVEL") -> true
+            item.type.name.endsWith("_HOE") -> true
+            item.type.name.endsWith("BOW") -> true
+            item.type.name.endsWith("CROSSBOW") -> true
+            item.type.name.endsWith("TRIDENT") -> true
+            item.type.name.endsWith("_HELMET") -> true
+            item.type.name.endsWith("_CHESTPLATE") -> true
+            item.type.name.endsWith("_LEGGINGS") -> true
+            item.type.name.endsWith("_BOOTS") -> true
+            else -> false
         }
 
-        val tradeMeta = trade.result.itemMeta
-        if (tradeMeta != null) {
-            val meta = baseItem.itemMeta!!
-            tradeMeta.enchants.forEach { (enchant, level) ->
-                meta.addEnchant(enchant, level, true)
+        if (isToolOrWeaponOrArmor) {
+            val meta = item.itemMeta!!
+
+            trade.result.itemMeta?.enchants?.forEach { (ench, lvl) ->
+                meta.addEnchant(ench, lvl, true)
             }
-            tradeMeta.itemFlags.forEach { meta.addItemFlags(it) }
-            meta.isUnbreakable = tradeMeta.isUnbreakable
+            trade.result.itemMeta?.itemFlags?.forEach { meta.addItemFlags(it) }
 
-            baseItem.itemMeta = meta
+            meta.isUnbreakable = true
+            meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE)
+
+            if (isArmor(item.type)) {
+                meta.addEnchant(Enchantment.BINDING_CURSE, 1, true)
+                meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
+                @Suppress("DEPRECATION")
+                meta.setDisplayName("${team?.color ?: "§7"}Не снимаемая броня")
+            }
+
+            if (item.type.name.endsWith("_SWORD") || item.type.name.contains("_PICKAXE") ||
+                item.type.name.contains("_AXE") || item.type.name.contains("_BOW")) {
+                meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
+            }
+
+            item.itemMeta = meta
+        } else {
+            trade.result.itemMeta?.let { originalMeta ->
+                val meta = item.itemMeta!!
+                originalMeta.enchants.forEach { (e, l) -> meta.addEnchant(e, l, true) }
+                originalMeta.itemFlags.forEach { meta.addItemFlags(it) }
+                item.itemMeta = meta
+            }
         }
 
-        return baseItem
+        return item
     }
 
     private fun createMatchingBoots(leggings: ItemStack): ItemStack {
