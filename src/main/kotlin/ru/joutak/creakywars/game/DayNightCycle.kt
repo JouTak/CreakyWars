@@ -1,15 +1,17 @@
 package ru.joutak.creakywars.game
 
 import org.bukkit.Bukkit
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.Particle
 import org.bukkit.entity.Creaking
 import org.bukkit.entity.EntityType
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.config.GameConfig
-import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.creakywars.utils.SpawnLocation
+import kotlin.math.cos
+import kotlin.math.sin
 
 class DayNightCycle(private val game: Game) {
 
@@ -19,16 +21,30 @@ class DayNightCycle(private val game: Game) {
     private var isNight = false
     private var currentTicks = 0L
 
-    private val eyeblossomBlocks = mutableMapOf<SpawnLocation, Boolean>()
-    private var creaking: Creaking? = null
+    private val eyeblossomBlocks = mutableMapOf<SpawnLocation, EyeblossomState>()
+    private val creakings = mutableListOf<Creaking>()
 
     private val DAY_START = 0L
     private val NIGHT_START = 14000L
     private val MINECRAFT_DAY_TICKS = 24000L
 
+    private val EYEBLOSSOM_OPEN_DURATION = 1200L
+
+    // ЦЕНТР КАРТЫ (используется и для волны, и для проверки дистанции Скрипунов)
+    private val WAVE_CENTER = Location(game.arena.world, 0.0, 70.0, 0.0)
+    private val WAVE_MAX_RADIUS = 30.0
+    private val WAVE_DURATION = 100L
+    private var waveTask: BukkitTask? = null
+
+    data class EyeblossomState(
+        var isOpen: Boolean = false,
+        var openAt: Long = 0L,
+        var closeAt: Long = 0L
+    )
+
     fun start() {
         game.arena.mapConfig.eyeblossomLocations.forEach { loc ->
-            eyeblossomBlocks[loc] = false
+            eyeblossomBlocks[loc] = EyeblossomState()
         }
 
         placeAllEyeblossoms(false)
@@ -56,7 +72,10 @@ class DayNightCycle(private val game: Game) {
         stopParticleTask()
 
         stopCreakingCheck()
-        despawnCreaking()
+        despawnAllCreakings()
+
+        waveTask?.cancel()
+        waveTask = null
 
         eyeblossomBlocks.keys.forEach { loc ->
             val block = loc.toLocation(game.arena.world).block
@@ -77,6 +96,10 @@ class DayNightCycle(private val game: Game) {
         }
 
         updateWorldTime()
+
+        if (isNight) {
+            updateEyeblossoms()
+        }
 
         if (currentTicks >= cycleDuration) {
             toggleDayNight()
@@ -117,26 +140,24 @@ class DayNightCycle(private val game: Game) {
     }
 
     private fun startNight() {
-//        game.broadcastMessage("§5§l⭐ НАСТУПАЕТ НОЧЬ! §eEyeblossom открываются, Скрипун пробуждается...")
-//        game.players.forEach { player ->
-//            MessageUtils.sendTitle(player, "§5⭐ НОЧЬ", "§eОстерегайтесь Скрипуна!")
-//            player.playSound(player.location, org.bukkit.Sound.ENTITY_ENDER_DRAGON_GROWL, 0.5f, 0.8f)
-//        }
-
-        openEyeblossoms()
-        spawnCreaking()
+        eyeblossomBlocks.values.forEach { state ->
+            state.isOpen = false
+            state.openAt = 0L
+            state.closeAt = 0L
+        }
+        scheduleEyeblossomOpenings()
+        spawnCreakings()
     }
 
     private fun startDay() {
-//        game.broadcastMessage("§e§l☀ НАСТУПАЕТ ДЕНЬ! §7Eyeblossom закрываются, Скрипун исчезает...")
-//        game.players.forEach { player ->
-//            MessageUtils.sendTitle(player, "§e☀ ДЕНЬ", "§7Время восстановиться")
-//            player.playSound(player.location, org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 1.2f)
-//        }
-
         closeEyeblossoms()
         stopCreakingCheck()
-        despawnCreaking()
+
+        startCleansingWave()
+
+        Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
+            despawnAllCreakings()
+        }, WAVE_DURATION + 20L)
     }
 
     private fun placeAllEyeblossoms(allOpen: Boolean) {
@@ -150,36 +171,71 @@ class DayNightCycle(private val game: Game) {
         }
     }
 
-    private fun openEyeblossoms() {
-        placeAllEyeblossoms(false)
-
+    private fun scheduleEyeblossomOpenings() {
+        val nightDuration = GameConfig.nightDurationTicks
         val openCount = (eyeblossomBlocks.size * GameConfig.eyeblossomOpenPercent).toInt()
-        val shuffled = eyeblossomBlocks.keys.shuffled()
 
-        var opened = 0
-        for (loc in shuffled) {
-            if (opened >= openCount) break
+        val maxOpenStartTime = nightDuration - EYEBLOSSOM_OPEN_DURATION
 
-            eyeblossomBlocks[loc] = true
+        val shuffled = eyeblossomBlocks.keys.shuffled().take(openCount)
 
-            val block = loc.toLocation(game.arena.world).block
-            block.type = Material.OPEN_EYEBLOSSOM
+        shuffled.forEach { loc ->
+            val state = eyeblossomBlocks[loc]!!
 
-            opened++
+            val openAt = (Math.random() * maxOpenStartTime).toLong()
+            val closeAt = openAt + EYEBLOSSOM_OPEN_DURATION
+
+            state.openAt = openAt
+            state.closeAt = closeAt
+            state.isOpen = false
         }
 
-        eyeblossomBlocks.keys.forEach { loc ->
-            if (eyeblossomBlocks[loc] != true) {
-                eyeblossomBlocks[loc] = false
+        PluginManager.getLogger().info("[Арена #${game.arena.id}] Запланировано открытие $openCount/${eyeblossomBlocks.size} цветков")
+    }
+
+    private fun updateEyeblossoms() {
+        eyeblossomBlocks.forEach { (loc, state) ->
+            val block = loc.toLocation(game.arena.world).block
+
+            if (currentTicks >= state.openAt && currentTicks < state.closeAt && !state.isOpen) {
+                state.isOpen = true
+                block.type = Material.OPEN_EYEBLOSSOM
+
+                val particleLoc = loc.toLocation(game.arena.world).add(0.5, 0.5, 0.5)
+                game.arena.world.spawnParticle(
+                    Particle.GLOW,
+                    particleLoc,
+                    20,
+                    0.3,
+                    0.3,
+                    0.3,
+                    0.1
+                )
+            }
+
+            if (currentTicks >= state.closeAt && state.isOpen) {
+                state.isOpen = false
+                block.type = Material.CLOSED_EYEBLOSSOM
+
+                val particleLoc = loc.toLocation(game.arena.world).add(0.5, 0.5, 0.5)
+                game.arena.world.spawnParticle(
+                    Particle.SMOKE,
+                    particleLoc,
+                    10,
+                    0.2,
+                    0.2,
+                    0.2,
+                    0.02
+                )
             }
         }
-
-        PluginManager.getLogger().info("[Арена #${game.arena.id}] Открыто $opened/${eyeblossomBlocks.size} цветков")
     }
 
     private fun closeEyeblossoms() {
-        eyeblossomBlocks.keys.forEach { loc ->
-            eyeblossomBlocks[loc] = false
+        eyeblossomBlocks.forEach { (loc, state) ->
+            state.isOpen = false
+            state.openAt = 0L
+            state.closeAt = 0L
 
             val block = loc.toLocation(game.arena.world).block
             block.type = Material.CLOSED_EYEBLOSSOM
@@ -205,21 +261,21 @@ class DayNightCycle(private val game: Game) {
     }
 
     private fun spawnEyeblossomParticles() {
-        eyeblossomBlocks.forEach { (loc, isOpen) ->
-            if (isOpen) {
+        eyeblossomBlocks.forEach { (loc, state) ->
+            if (state.isOpen) {
                 val blockLoc = loc.toLocation(game.arena.world)
                 val block = blockLoc.block
 
                 if (block.type == Material.OPEN_EYEBLOSSOM) {
                     val particleLoc = blockLoc.clone().add(0.5, 1.2, 0.5)
                     game.arena.world.spawnParticle(
-                        Particle.END_ROD,           // Яркие белые частицы
+                        Particle.END_ROD,
                         particleLoc,
-                        2,                          // Количество
-                        0.15,                       // offset X
-                        0.1,                        // offset Y
-                        0.15,                       // offset Z
-                        0.01                        // скорость
+                        2,
+                        0.15,
+                        0.1,
+                        0.15,
+                        0.01
                     )
 
                     game.arena.world.spawnParticle(
@@ -249,14 +305,17 @@ class DayNightCycle(private val game: Game) {
     }
 
     fun tryHarvestEyeblossom(loc: SpawnLocation): Boolean {
-        val isOpen = eyeblossomBlocks[loc] ?: return false
+        val state = eyeblossomBlocks[loc] ?: return false
 
-        if (!isOpen) return false
+        if (!state.isOpen) return false
 
         val block = loc.toLocation(game.arena.world).block
         block.type = Material.CLOSED_EYEBLOSSOM
 
-        eyeblossomBlocks[loc] = false
+        state.isOpen = false
+
+        state.openAt = Long.MAX_VALUE
+        state.closeAt = Long.MAX_VALUE
 
         val particleLoc = loc.toLocation(game.arena.world).add(0.5, 0.5, 0.5)
         game.arena.world.spawnParticle(
@@ -281,77 +340,95 @@ class DayNightCycle(private val game: Game) {
         return true
     }
 
-    private fun spawnCreaking() {
-        val spawnLoc = game.arena.mapConfig.creakingSpawnLocation ?: return
+    private fun spawnCreakings() {
+        val spawnLocations = game.arena.mapConfig.creakingSpawnLocations
+
+        if (spawnLocations.isEmpty()) {
+            PluginManager.getLogger().warning("[Арена #${game.arena.id}] Нет точек спавна для Скрипунов!")
+            return
+        }
 
         stopCreakingCheck()
-        despawnCreaking()
+        despawnAllCreakings()
 
-        val location = spawnLoc.toLocation(game.arena.world)
-        val entity = game.arena.world.spawnEntity(location, EntityType.CREAKING) as? Creaking
+        spawnLocations.forEach { spawnLoc ->
+            val location = spawnLoc.toLocation(game.arena.world)
+            val entity = game.arena.world.spawnEntity(location, EntityType.CREAKING) as? Creaking
 
-        if (entity != null) {
-            creaking = entity
+            if (entity != null) {
+                creakings.add(entity)
 
-            @Suppress("DEPRECATION")
-            entity.customName = "§5Ночной страж"
-            entity.isCustomNameVisible = true
-            entity.setAI(true)
-            entity.isInvulnerable = true
-            entity.isPersistent = true
+                @Suppress("DEPRECATION")
+                entity.customName = "§5Ночной страж"
+                entity.isCustomNameVisible = true
+                entity.setAI(true)
+                entity.isInvulnerable = true
+                entity.isPersistent = true
 
-            entity.maxHealth = 1000.0
-            entity.health = 1000.0
-            entity.fireTicks = 0
-            entity.setGravity(true)
+                entity.maxHealth = 1000.0
+                entity.health = 1000.0
+                entity.fireTicks = 0
+                entity.setGravity(true)
 
-            PluginManager.getLogger().info("[Арена #${game.arena.id}] Скрипун заспавнен в ${spawnLoc.x}, ${spawnLoc.y}, ${spawnLoc.z}")
+                PluginManager.getLogger().info("[Арена #${game.arena.id}] Скрипун заспавнен в ${spawnLoc.x}, ${spawnLoc.y}, ${spawnLoc.z}")
+            }
+        }
 
+        if (creakings.isNotEmpty()) {
             startCreakingRangeCheck()
         }
     }
 
-    private fun despawnCreaking() {
-        val entity = creaking
-        if (entity != null && entity.isValid) {
-            entity.remove()
-            PluginManager.getLogger().info("[Арена #${game.arena.id}] Скрипун удален")
+    private fun despawnAllCreakings() {
+        creakings.forEach { entity ->
+            if (entity.isValid) {
+                entity.remove()
+            }
         }
-        creaking = null
+        creakings.clear()
+        PluginManager.getLogger().info("[Арена #${game.arena.id}] Все Скрипуны удалены")
     }
 
     private fun startCreakingRangeCheck() {
         creakingCheckTask = Bukkit.getScheduler().runTaskTimer(
             PluginManager.getPlugin(),
             Runnable {
-                val creakingEntity = creaking
+                val spawnLocations = game.arena.mapConfig.creakingSpawnLocations
 
-                if (creakingEntity == null || !creakingEntity.isValid) {
+                creakings.removeIf { !it.isValid }
+
+                if (creakings.size < spawnLocations.size) {
                     PluginManager.getLogger().warning("[Арена #${game.arena.id}] Скрипун исчез, респавним...")
-                    spawnCreaking()
+                    spawnCreakings()
                     return@Runnable
                 }
 
-                if (!creakingEntity.isInvulnerable) {
-                    creakingEntity.isInvulnerable = true
-                }
+                val centerLocation = WAVE_CENTER
 
-                if (!creakingEntity.isPersistent) {
-                    creakingEntity.isPersistent = true
-                }
+                creakings.forEachIndexed { index, creakingEntity ->
+                    if (!creakingEntity.isInvulnerable) {
+                        creakingEntity.isInvulnerable = true
+                    }
 
-                if (creakingEntity.health < creakingEntity.maxHealth) {
-                    creakingEntity.health = creakingEntity.maxHealth
-                }
+                    if (!creakingEntity.isPersistent) {
+                        creakingEntity.isPersistent = true
+                    }
 
-                creakingEntity.fireTicks = 0
+                    if (creakingEntity.health < creakingEntity.maxHealth) {
+                        creakingEntity.health = creakingEntity.maxHealth
+                    }
 
-                val spawnLoc = game.arena.mapConfig.creakingSpawnLocation ?: return@Runnable
-                val spawnPoint = spawnLoc.toLocation(game.arena.world)
+                    creakingEntity.fireTicks = 0
 
-                val distance = creakingEntity.location.distance(spawnPoint)
-                if (distance > GameConfig.creakingAggroRadius) {
-                    creakingEntity.teleport(spawnPoint)
+                    val distanceFromCenter = creakingEntity.location.distance(centerLocation)
+
+                    if (distanceFromCenter > GameConfig.creakingAggroRadius) {
+                        val originalSpawnLoc = spawnLocations.getOrNull(index)
+                        if (originalSpawnLoc != null) {
+                            val respawnPoint = originalSpawnLoc.toLocation(game.arena.world)
+                            creakingEntity.teleport(respawnPoint)
+                        }
+                    }
                 }
             },
             0L,
@@ -362,6 +439,133 @@ class DayNightCycle(private val game: Game) {
     private fun stopCreakingCheck() {
         creakingCheckTask?.cancel()
         creakingCheckTask = null
+    }
+
+    private fun startCleansingWave() {
+        var currentRadius = 0.0
+        val radiusIncrement = WAVE_MAX_RADIUS / WAVE_DURATION.toDouble()
+        var ticks = 0L
+
+        creakings.removeIf { creaking ->
+            // Очистка скрипунов, которые оказались внутри волны
+            if (creaking.isValid && creaking.location.distance(WAVE_CENTER) <= currentRadius) {
+                creaking.remove()
+
+                creaking.world.spawnParticle(
+                    Particle.SOUL,
+                    creaking.location.add(0.0, 1.0, 0.0),
+                    20,
+                    0.4,
+                    0.6,
+                    0.4,
+                    0.05
+                )
+
+                true
+            } else false
+        }
+
+        waveTask = Bukkit.getScheduler().runTaskTimer(
+            PluginManager.getPlugin(),
+            Runnable {
+                ticks++
+                currentRadius += radiusIncrement
+
+
+                spawnWaveParticles(currentRadius)
+
+                breakBlocksInRadius(currentRadius, radiusIncrement)
+
+                if (ticks >= WAVE_DURATION) {
+                    waveTask?.cancel()
+                    waveTask = null
+                    PluginManager.getLogger().info("[Арена #${game.arena.id}] Волна очищения завершена")
+                }
+            },
+            0L,
+            1L
+        )
+
+        PluginManager.getLogger().info("[Арена #${game.arena.id}] Запущена волна очищения")
+    }
+
+    private fun spawnWaveParticles(radius: Double) {
+        val particleCount = (radius * 2).toInt().coerceIn(30, 160)
+        val angleStep = (2 * Math.PI) / particleCount
+
+        val minY = WAVE_CENTER.y - 5
+        val maxY = WAVE_CENTER.y + 5
+
+        for (i in 0 until particleCount) {
+            val angle = i * angleStep
+            val x = WAVE_CENTER.x + radius * cos(angle)
+            val z = WAVE_CENTER.z + radius * sin(angle)
+
+            for (y in minY.toInt()..maxY.toInt()) {
+
+                val particleLoc = Location(game.arena.world, x, y.toDouble(), z)
+
+                game.arena.world.spawnParticle(
+                    Particle.SOUL_FIRE_FLAME,
+                    particleLoc,
+                    30,
+                    0.1,
+                    0.2,
+                    0.1,
+                    0.01
+                )
+
+                if (i % 6 == 0) {
+                    game.arena.world.spawnParticle(
+                        Particle.END_ROD,
+                        particleLoc,
+                        1,
+                        0.0,
+                        0.15,
+                        0.0,
+                        0.0
+                    )
+                }
+            }
+        }
+    }
+
+    private fun breakBlocksInRadius(currentRadius: Double, increment: Double) {
+        val minY = -60
+        val maxY = 300
+
+        val centerX = WAVE_CENTER.blockX
+        val centerZ = WAVE_CENTER.blockZ
+
+        val minRadiusSq = (currentRadius - increment).let { it * it }
+        val maxRadiusSq = currentRadius * currentRadius
+
+        for (x in (centerX - currentRadius.toInt())..(centerX + currentRadius.toInt())) {
+            for (z in (centerZ - currentRadius.toInt())..(centerZ + currentRadius.toInt())) {
+                val distanceSq = ((x - centerX) * (x - centerX) + (z - centerZ) * (z - centerZ)).toDouble()
+                if (distanceSq >= minRadiusSq && distanceSq <= maxRadiusSq) {
+                    for (y in minY..maxY) {
+                        val block = game.arena.world.getBlockAt(x, y, z)
+
+                        if (GameConfig.allowedBlocks.contains(block.type)) {
+                            val blockLoc = block.location.add(0.5, 0.5, 0.5)
+                            game.arena.world.spawnParticle(
+                                Particle.BLOCK,
+                                blockLoc,
+                                10,
+                                0.3,
+                                0.3,
+                                0.3,
+                                0.1,
+                                block.blockData
+                            )
+
+                            block.type = Material.AIR
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun isNightTime(): Boolean = isNight
