@@ -19,7 +19,7 @@ class TraderListener : Listener {
         if (entity !is Illusioner) return
 
         val name = entity.customName ?: return
-        if (!name.contains("§6§lТорговец")) return
+        if (!name.contains("§6§lТорговец кирпичами")) return
 
         event.isCancelled = true
         entity.health = entity.maxHealth
@@ -36,7 +36,7 @@ class TraderListener : Listener {
 
         if (entity !is Illusioner) return
         val name = entity.customName ?: return
-        if (!name.contains("§6§lТорговец")) return
+        if (!name.contains("§6§lТорговец кирпичами")) return
 
         event.isCancelled = true
 

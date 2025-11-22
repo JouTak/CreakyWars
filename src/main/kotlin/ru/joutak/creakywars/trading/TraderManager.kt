@@ -39,7 +39,7 @@ object TraderManager {
         val trader = loc.world.spawnEntity(loc, EntityType.ILLUSIONER) as Illusioner
 
         @Suppress("DEPRECATION")
-        trader.customName = "§6§lТорговец"
+        trader.customName = "§6§lТорговец кирпичами"
         trader.isCustomNameVisible = true
         trader.setAI(false)
         trader.isInvulnerable = true
