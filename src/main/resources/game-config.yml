@@ -1,11 +1,55 @@
 # Игровой конфиг CreakyWars
-# Настройки ресурсов и торговли
+
+settings:
+  protection-radius: 3.0  # Радиус привата точек интереса
+  void-kill-height: 50
+  infinite-food: true
+
+# Блоки, которые игроки могут ломать и ставить
+allowed-blocks:
+  - OAK_PLANKS
+  - CLAY
+  - END_STONE
+  - OBSIDIAN
+  - WHITE_TERRACOTTA
+  - RED_TERRACOTTA
+  - BLUE_TERRACOTTA
+  - GREEN_TERRACOTTA
+  - YELLOW_TERRACOTTA
+  - ORANGE_TERRACOTTA
+  - MAGENTA_TERRACOTTA
+  - LIGHT_BLUE_TERRACOTTA
+  - LIME_TERRACOTTA
+  - PINK_TERRACOTTA
+  - GRAY_TERRACOTTA
+  - LIGHT_GRAY_TERRACOTTA
+  - CYAN_TERRACOTTA
+  - PURPLE_TERRACOTTA
+  - BROWN_TERRACOTTA
+  - BLACK_TERRACOTTA
+  - WHITE_WOOL
+  - RED_WOOL
+  - BLUE_WOOL
+  - GREEN_WOOL
+  - YELLOW_WOOL
+  - ORANGE_WOOL
+  - MAGENTA_WOOL
+  - LIGHT_BLUE_WOOL
+  - LIME_WOOL
+  - PINK_WOOL
+  - GRAY_WOOL
+  - LIGHT_GRAY_WOOL
+  - CYAN_WOOL
+  - PURPLE_WOOL
+  - BROWN_WOOL
+  - BLACK_WOOL
 
 day-night-cycle:
   day-duration-ticks: 6000
   night-duration-ticks: 6000
   eyeblossom-open-percent: 0.5
   creaking-aggro-radius: 60.0
+  creakingBreakSpeed: 1.0
 
 respawn:
   delay-seconds: 15
@@ -28,8 +72,8 @@ resources:
 
   # Высокоуровневая резина
   rubber_high:
-    material: RESIN_BRICKS
-    display-name: "§dРезиновый блок"
+    material: NETHER_BRICK
+    display-name: "§dСлишком прочная резина"
     spawn-period: 360
     tier: 3
 
@@ -41,7 +85,7 @@ resources:
     tier: 2
 
 trades:
-  # === БЛОКИ ===
+  # Блоки
   wool:
     cost: "rubber_low:4"
     result: "WHITE_WOOL:16"
@@ -72,7 +116,7 @@ trades:
     display-name: "Обсидиан"
     category: "blocks"
 
-  # === МЕЧИ ===
+  # Мечи
   stone_sword:
     cost: "rubber_low:10"
     result: "STONE_SWORD:1"
@@ -99,7 +143,7 @@ trades:
     enchantments:
       - "KNOCKBACK:1"
 
-  # === БРОНЯ ===
+  # Броня
   chainmail_armor:
     cost: "rubber_low:40"
     result: "CHAINMAIL_LEGGINGS:1"
@@ -118,7 +162,7 @@ trades:
     display-name: "Алмазная броня"
     category: "armor"
 
-  # === ИНСТРУМЕНТЫ ===
+  # Инструменты
   wooden_pickaxe:
     cost: "rubber_low:20"
     result: "WOODEN_PICKAXE:1"
@@ -173,7 +217,7 @@ trades:
     display-name: "Ножницы"
     category: "tools"
 
-  # === ОСОБОЕ ===
+  # Особое
   fireball:
     cost: "rubber_low:40"
     result: "FIRE_CHARGE:1"

@@ -3,6 +3,7 @@ package ru.joutak.creakywars.config
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.Material
+import org.bukkit.enchantments.Enchantment
 import org.bukkit.inventory.ItemStack
 import ru.joutak.creakywars.resources.ResourceType
 import ru.joutak.creakywars.trading.Trade
@@ -18,90 +19,173 @@ object GameConfig {
 
     var dayDurationTicks: Long = 6000L
     var nightDurationTicks: Long = 6000L
-    var eyeblossomOpenPercent: Double = 0.3
-    var creakingAggroRadius: Double = 30.0
-    var respawnDelaySeconds: Int = 5
+    var eyeblossomOpenPercent: Double = 0.5
+    var respawnDelaySeconds: Int = 15
     var respawnSpectatorMode: Boolean = true
+    var creakingAggroRadius: Double = 60.0
+    var creakingBreakSpeed: Double = 1.0
 
-    fun load() {
+    var protectionRadius: Double = 3.0
+    var voidKillHeight: Int = 50
+    var infiniteFood: Boolean = true
+    val allowedBlocks = mutableSetOf<Material>()
+
+    fun init() {
         val plugin = PluginManager.getPlugin()
         file = File(plugin.dataFolder, "game-config.yml")
 
         if (!file.exists()) {
             plugin.saveResource("game-config.yml", false)
-            PluginManager.getLogger().info("Создан game-config.yml из шаблона")
+            PluginManager.getLogger().info("✓ Создан game-config.yml из шаблона")
+        }
+
+        load()
+    }
+
+    fun load() {
+        val plugin = PluginManager.getPlugin()
+        if (!::file.isInitialized) {
+            file = File(plugin.dataFolder, "game-config.yml")
+
+            if (!file.exists()) {
+                plugin.saveResource("game-config.yml", false)
+            }
         }
 
         config = YamlConfiguration.loadConfiguration(file)
 
+        loadGlobalSettings()
         loadDayNightCycle()
         loadRespawnSettings()
         loadResources()
         loadTrades()
 
-        PluginManager.getLogger().info("Игровой конфиг загружен!")
+        PluginManager.getLogger().info("✓ Игровой конфиг загружен!")
+        PluginManager.getLogger().info("  - Разрешенных блоков: ${allowedBlocks.size}")
+        PluginManager.getLogger().info("  - Ресурсов: ${resourceTypes.size}")
+        PluginManager.getLogger().info("  - Трейдов: ${trades.size}")
+    }
+
+    private fun loadGlobalSettings() {
+        protectionRadius = config.getDouble("settings.protection-radius", 3.0)
+        voidKillHeight = config.getInt("settings.void-kill-height", 50)
+        infiniteFood = config.getBoolean("settings.infinite-food", true)
+
+        allowedBlocks.clear()
+        val blocksList = config.getStringList("allowed-blocks")
+        for (blockName in blocksList) {
+            try {
+                val mat = Material.valueOf(blockName.uppercase())
+                allowedBlocks.add(mat)
+            } catch (e: IllegalArgumentException) {
+                PluginManager.getLogger().warning("⚠ Неверный материал в allowed-blocks: $blockName")
+            }
+        }
+        PluginManager.getLogger().info("  [Настройки]")
+        PluginManager.getLogger().info("    Радиус защиты: $protectionRadius")
+        PluginManager.getLogger().info("    Смерть в бездне: Y < $voidKillHeight")
+        PluginManager.getLogger().info("    Бесконечная еда: $infiniteFood")
     }
 
     private fun loadDayNightCycle() {
         dayDurationTicks = config.getLong("day-night-cycle.day-duration-ticks", 6000L)
         nightDurationTicks = config.getLong("day-night-cycle.night-duration-ticks", 6000L)
-        eyeblossomOpenPercent = config.getDouble("day-night-cycle.eyeblossom-open-percent", 0.3)
-        creakingAggroRadius = config.getDouble("day-night-cycle.creaking-aggro-radius", 30.0)
+        eyeblossomOpenPercent = config.getDouble("day-night-cycle.eyeblossom-open-percent", 0.5)
+        creakingAggroRadius = config.getDouble("day-night-cycle.creaking-aggro-radius", 60.0)
+        creakingBreakSpeed = config.getDouble("day-night-cycle.creaking-break-speed", 1.5)
     }
 
     private fun loadRespawnSettings() {
-        respawnDelaySeconds = config.getInt("respawn.delay-seconds", 5)
+        respawnDelaySeconds = config.getInt("respawn.delay-seconds", 15)
         respawnSpectatorMode = config.getBoolean("respawn.spectator-mode", true)
     }
 
+
     private fun loadResources() {
         resourceTypes.clear()
-
         val resourcesSection = config.getConfigurationSection("resources") ?: return
-
         for (key in resourcesSection.getKeys(false)) {
             val section = resourcesSection.getConfigurationSection(key) ?: continue
-
-            val material = Material.valueOf(section.getString("material", "SLIME_BALL")!!.uppercase())
-            val displayName = section.getString("display-name", key)!!
-            val spawnPeriod = section.getLong("spawn-period", 20L)
-            val tier = section.getInt("tier", 1)
-
-            resourceTypes[key] = ResourceType(key, material, displayName, spawnPeriod, tier)
+            try {
+                val materialStr = section.getString("material", "SLIME_BALL")!!.uppercase()
+                val material = Material.valueOf(materialStr)
+                val displayName = section.getString("display-name", key)!!
+                val spawnPeriod = section.getLong("spawn-period", 60L)
+                val tier = section.getInt("tier", 1)
+                resourceTypes[key] = ResourceType(key, material, displayName, spawnPeriod, tier)
+            } catch (e: Exception) {
+                // Log error
+            }
         }
     }
 
     private fun loadTrades() {
         trades.clear()
-
         val tradesSection = config.getConfigurationSection("trades") ?: return
-
         for (key in tradesSection.getKeys(false)) {
             val section = tradesSection.getConfigurationSection(key) ?: continue
-
-            val cost = parseCost(section.getString("cost", "rubber_low:4")!!)
-            val result = parseItem(section.getString("result", "STONE_SWORD")!!)
-            val displayName = section.getString("display-name", key)!!
-            val category = section.getString("category", "items")!!
-
-            trades.add(Trade(key, cost, result, displayName, category))
+            try {
+                val cost = parseCost(section.getString("cost", "rubber_low:4")!!)
+                val result = parseItem(section.getString("result", "STONE_SWORD:1")!!)
+                val displayName = section.getString("display-name", key)!!
+                val category = section.getString("category", "special")!!
+                val enchantments = section.getStringList("enchantments")
+                if (enchantments.isNotEmpty()) {
+                    applyEnchantments(result, enchantments)
+                }
+                trades.add(Trade(key, cost, result, displayName, category))
+            } catch (e: Exception) {
+                // Log error
+            }
         }
     }
 
     private fun parseCost(costStr: String): Pair<String, Int> {
         val parts = costStr.split(":")
-        return Pair(parts[0], parts.getOrNull(1)?.toInt() ?: 1)
+        val resourceId = parts[0]
+        val amount = parts.getOrNull(1)?.toIntOrNull() ?: 1
+        return Pair(resourceId, amount)
     }
 
     private fun parseItem(itemStr: String): ItemStack {
         val parts = itemStr.split(":")
-        val material = Material.valueOf(parts[0].uppercase())
-        val amount = parts.getOrNull(1)?.toInt() ?: 1
+        val materialStr = parts[0].uppercase()
+        val material = Material.valueOf(materialStr)
+        val amount = parts.getOrNull(1)?.toIntOrNull() ?: 1
         return ItemStack(material, amount)
     }
 
+    private fun applyEnchantments(item: ItemStack, enchantments: List<String>) {
+        val meta = item.itemMeta ?: return
+        enchantments.forEach { enchantStr ->
+            try {
+                val parts = enchantStr.split(":")
+                val enchantName = parts[0].uppercase()
+                val level = parts.getOrNull(1)?.toIntOrNull() ?: 1
+                val enchantment = Enchantment.getByName(enchantName)
+                if (enchantment != null) {
+                    meta.addEnchant(enchantment, level, true)
+                }
+            } catch (e: Exception) { }
+        }
+        item.itemMeta = meta
+    }
+
     fun reload() {
+        if (!file.exists()) return
         config = YamlConfiguration.loadConfiguration(file)
         load()
+    }
+
+    fun getResourceType(id: String): ResourceType? {
+        return resourceTypes[id]
+    }
+
+    fun getTradesByCategory(category: String): List<Trade> {
+        return trades.filter { it.category == category }
+    }
+
+    fun getAllCategories(): List<String> {
+        return trades.map { it.category }.distinct()
     }
 }
