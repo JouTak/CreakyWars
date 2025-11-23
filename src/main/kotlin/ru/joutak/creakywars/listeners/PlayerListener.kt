@@ -1,6 +1,7 @@
 package ru.joutak.creakywars.listeners
 
 import org.bukkit.GameMode
+import org.bukkit.Material
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
@@ -8,7 +9,9 @@ import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.*
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.queue.QueueManager
+import ru.joutak.creakywars.utils.MessageUtils
 
+@Suppress("DEPRECATION")
 class PlayerListener : Listener {
 
     @Suppress("DEPRECATION")
@@ -45,6 +48,25 @@ class PlayerListener : Listener {
 
         if (game == null) {
             event.isCancelled = true
+            return
+        }
+
+        val item = event.itemDrop.itemStack
+        val type = item.type.name
+
+        val isForbidden = type.endsWith("_SWORD") ||
+                type.endsWith("_AXE") ||
+                type.endsWith("_SHOVEL") ||
+                type.endsWith("_HOE") ||
+                type == "BOW" ||
+                type == "CROSSBOW" ||
+                type == "TRIDENT" ||
+                type == "SHEARS" ||
+                type == "MACE"
+
+        if (isForbidden) {
+            event.isCancelled = true
+            MessageUtils.sendMessage(player, "§cВы не можете выбросить этот предмет!")
         }
     }
 

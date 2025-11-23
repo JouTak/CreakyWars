@@ -9,6 +9,7 @@ import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.FoodLevelChangeEvent
+import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.inventory.CraftItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
@@ -17,6 +18,7 @@ import ru.joutak.creakywars.arenas.ArenaState
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.GameManager
 
+@Suppress("DEPRECATION")
 class GameListener : Listener {
 
     @EventHandler
@@ -30,7 +32,7 @@ class GameListener : Listener {
             }
             return
         }
-        
+
         if (!GameConfig.allowedBlocks.contains(event.block.type)) {
             event.isCancelled = true
         }
@@ -136,16 +138,24 @@ class GameListener : Listener {
     }
 
     @EventHandler
-    fun onEntityDamage(event: EntityDamageEvent) {
-        val entity = event.entity as? Player ?: return
-        val game = GameManager.getGame(entity) ?: return
+    fun onPlayerDeath(event: PlayerDeathEvent) {
+        val player = event.entity
 
-        if (game.arena.state == ArenaState.WAITING || game.arena.state == ArenaState.STARTING) {
-            event.isCancelled = true
+        if (player.gameMode != GameMode.SURVIVAL) {
+            return
         }
-        if (entity.gameMode == GameMode.SPECTATOR) {
-            event.isCancelled = true
-        }
+
+        event.deathMessage = null
+
+        val game = GameManager.getGame(player) ?: return
+
+        val killer = player.killer
+
+        event.drops.clear()
+        event.keepLevel = false
+        event.droppedExp = 0
+
+        game.handlePlayerDeath(player, killer)
     }
 
     @EventHandler
