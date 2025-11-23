@@ -1,5 +1,6 @@
 package ru.joutak.creakywars.game
 
+import org.bukkit.World // Новый импорт
 import org.bukkit.entity.Player
 import ru.joutak.creakywars.arenas.Arena
 import ru.joutak.creakywars.arenas.ArenaManager
@@ -25,6 +26,10 @@ object GameManager {
 
     fun getGame(arena: Arena): Game? {
         return activeGames[arena]
+    }
+
+    fun getGame(world: World): Game? {
+        return activeGames.values.firstOrNull { it.arena.world == world }
     }
 
     fun isInGame(player: Player): Boolean {
@@ -112,7 +117,6 @@ object GameManager {
             PluginManager.getLogger().info("[DEBUG] Удаление игрока ${player.name} из игры")
         }
 
-        game.removePlayer(player)
         MessageUtils.sendMessage(player, "§cВы покинули игру")
 
         return true

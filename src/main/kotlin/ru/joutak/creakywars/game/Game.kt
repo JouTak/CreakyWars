@@ -18,6 +18,7 @@ import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
 import java.util.UUID
 
+@Suppress("DEPRECATION")
 class Game(
     val arena: Arena,
     val teams: List<Team>
@@ -230,51 +231,60 @@ class Game(
             broadcastMessage("${team.color}${player.name} §7погиб")
         }
 
-        if (isDebugMode) {
-            startRespawnTimer(player, player.location)
-            return
-        }
+        val spectatorLocation = org.bukkit.Location(arena.world, 0.0, 75.0, 0.0)
 
-        if (team.coreDestroyed) {
-            data.isAlive = false
+        org.bukkit.Bukkit.getScheduler().runTaskLater(ru.joutak.creakywars.utils.PluginManager.getPlugin(), Runnable {
+            if (!player.isOnline) return@Runnable
+
+            player.spigot().respawn()
+
             player.gameMode = GameMode.SPECTATOR
 
-            MessageUtils.sendMessage(player, "§c§lВы выбыли из игры!")
+            player.teleport(spectatorLocation)
 
-            if (killer != null) {
-                val killerData = getPlayerData(killer)
-                killerData?.addFinalKill()
-                broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
+            if (isDebugMode) {
+                startRespawnTimer(player, spectatorLocation)
+                return@Runnable
             }
 
-            checkWinCondition()
-            return
-        }
-
-        if (!canRespawn()) {
-            if (team.canRespawn()) {
-                team.decrementLives()
-                startRespawnTimer(player, player.location)
-            } else {
+            if (team.coreDestroyed) {
                 data.isAlive = false
-                player.gameMode = GameMode.SPECTATOR
 
                 MessageUtils.sendMessage(player, "§c§lВы выбыли из игры!")
+                player.sendTitle("§cИГРА ОКОНЧЕНА", "§7Ваше ядро было уничтожено", 10, 70, 20)
 
                 if (killer != null) {
                     val killerData = getPlayerData(killer)
                     killerData?.addFinalKill()
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
                 }
+
+                checkWinCondition()
+                return@Runnable
             }
-        } else {
-            startRespawnTimer(player, player.location)
-        }
+
+            if (team.canRespawn()) {
+                team.decrementLives()
+                startRespawnTimer(player, spectatorLocation)
+            } else {
+                data.isAlive = false
+                MessageUtils.sendMessage(player, "§c§lВы выбыли из игры!")
+                player.sendTitle("§cВЫ ПОГИБЛИ", "§7Жизни закончились", 10, 70, 20)
+
+                if (killer != null) {
+                    val killerData = getPlayerData(killer)
+                    killerData?.addFinalKill()
+                    broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
+                }
+
+                checkWinCondition()
+            }
+        }, 1L)
     }
 
     private fun transferResourcesToKiller(victim: Player, killer: Player) {
         val resourceMaterials = setOf(
-            Material.RESIN_CLUMP,
+            Material.NETHER_BRICK,
             Material.RESIN_BRICK,
             Material.RESIN_BRICKS,
             Material.OPEN_EYEBLOSSOM
@@ -371,7 +381,6 @@ class Game(
     }
 
 
-    @Suppress("DEPRECATION")
     private fun respawnPlayer(player: Player) {
         val data = getPlayerData(player) ?: return
         val team = data.team ?: return
