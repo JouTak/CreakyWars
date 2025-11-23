@@ -7,12 +7,13 @@ import org.bukkit.entity.Item
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.Game
+import ru.joutak.creakywars.game.Team
 import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.creakywars.utils.SpawnLocation
+import java.util.Locale
 
 object ResourceSpawner {
     private val activeSpawners = mutableMapOf<Game, MutableList<Spawner>>()
-    private val resourceMultipliers = mutableMapOf<Game, Double>()
 
     fun init() {
         PluginManager.getLogger().info("ResourceSpawner инициализирован!")
@@ -20,46 +21,47 @@ object ResourceSpawner {
 
     fun startSpawning(game: Game) {
         val spawners = mutableListOf<Spawner>()
-        resourceMultipliers[game] = 1.0
 
         for ((resourceTypeId, locations) in game.arena.mapConfig.resourceSpawners) {
-            val resourceType = GameConfig.resourceTypes[resourceTypeId]
+            val resourceType = GameConfig.resourceTypes[resourceTypeId] ?: continue
 
-            if (resourceType == null) {
-                PluginManager.getLogger().warning("Тип ресурса '$resourceTypeId' не найден в GameConfig!")
-                continue
-            }
+            locations.forEachIndexed { index, location ->
+                val teamId = if (index < 4 && (resourceTypeId == "rubber_low" || resourceTypeId == "rubber_mid")) {
+                    index
+                } else {
+                    null
+                }
 
-            PluginManager.getLogger().info("Создаем спавнеры для '$resourceTypeId' (${locations.size} точек)")
-
-            for (location in locations) {
                 val spawner = Spawner(
                     game,
                     resourceType,
                     location,
-                    resourceType.spawnPeriod
+                    resourceType.spawnPeriod,
+                    teamId
                 )
                 spawner.start()
                 spawners.add(spawner)
             }
         }
-
         activeSpawners[game] = spawners
-        PluginManager.getLogger().info("Запущено ${spawners.size} спавнеров ресурсов для игры #${game.arena.id}")
     }
 
     fun stopSpawning(game: Game) {
         activeSpawners[game]?.forEach { it.stop() }
         activeSpawners.remove(game)
-        resourceMultipliers.remove(game)
+    }
+
+    fun updateTeamMultiplier(game: Game, team: Team, multiplier: Double) {
+        activeSpawners[game]?.forEach { spawner ->
+            if (spawner.teamId == team.id) {
+                spawner.setTeamMultiplier(multiplier)
+            }
+        }
     }
 
     fun setMultiplier(game: Game, multiplier: Double) {
-        resourceMultipliers[game] = multiplier
-
         activeSpawners[game]?.forEach { spawner ->
-            val newPeriod = (spawner.basePeriod / multiplier).toLong()
-            spawner.updatePeriod(newPeriod)
+            spawner.setGlobalMultiplier(multiplier)
         }
     }
 
@@ -67,54 +69,52 @@ object ResourceSpawner {
         private val game: Game,
         private val resourceType: ResourceType,
         private val spawnLocation: SpawnLocation,
-        val basePeriod: Long
+        val basePeriod: Long,
+        val teamId: Int?
     ) {
         private var task: BukkitTask? = null
-        private var hologram: ArmorStand? = null
+
+        private var nameHologram: ArmorStand? = null
+        private var timerHologram: ArmorStand? = null
+
         private var spawnedItem: Item? = null
-        private var currentPeriod: Long = basePeriod
+
+        private var currentMaxPeriod: Long = basePeriod
+        private var ticksRemaining: Long = 0
+
+        private var teamMultiplier: Double = 1.0
+        private var globalMultiplier: Double = 1.0
 
         fun start() {
             val location = spawnLocation.toLocation(game.arena.world)
-
-            createHologram(location)
-
-            PluginManager.getLogger().info(
-                "[Spawner] Запуск спавнера '${resourceType.displayName}' на " +
-                        "(${spawnLocation.x}, ${spawnLocation.y}, ${spawnLocation.z}) " +
-                        "период: $currentPeriod тиков (${currentPeriod / 20} сек)"
-            )
-
-            task = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
-                spawnResource()
-            }, 0L, currentPeriod)
+            createHolograms(location)
+            recalculatePeriod()
+            ticksRemaining = currentMaxPeriod
+            startTickingTask()
         }
 
         fun stop() {
             task?.cancel()
-            hologram?.remove()
+            nameHologram?.remove()
+            timerHologram?.remove()
             spawnedItem?.remove()
         }
 
-        fun updatePeriod(newPeriod: Long) {
-            if (currentPeriod == newPeriod) return
+        private fun createHolograms(location: Location) {
+            val nameLoc = location.clone().add(0.5, 2.3, 0.5)
+            nameHologram = spawnArmorStand(nameLoc, "§e${resourceType.displayName}")
 
-            currentPeriod = newPeriod
-
-            task?.cancel()
-            task = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
-                spawnResource()
-            }, 0L, currentPeriod)
+            val timerLoc = location.clone().add(0.5, 2.0, 0.5)
+            timerHologram = spawnArmorStand(timerLoc, "§7Wait...")
         }
 
-        private fun createHologram(location: Location) {
-            val hologramLoc = location.clone().add(0.5, 2.0, 0.5)
-            hologram = game.arena.world.spawn(hologramLoc, ArmorStand::class.java).apply {
+        private fun spawnArmorStand(loc: Location, name: String): ArmorStand {
+            return game.arena.world.spawn(loc, ArmorStand::class.java).apply {
                 setGravity(false)
                 isVisible = false
                 isCustomNameVisible = true
                 @Suppress("DEPRECATION")
-                customName = "§e${resourceType.displayName}"
+                customName = name
                 isMarker = true
                 setAI(false)
                 isPersistent = true
@@ -128,19 +128,51 @@ object ResourceSpawner {
             val item = game.arena.world.dropItem(location, itemStack).apply {
                 velocity = org.bukkit.util.Vector(0.0, 0.0, 0.0)
                 pickupDelay = 10
-
                 setMetadata(
                     "creakywars_resource",
                     org.bukkit.metadata.FixedMetadataValue(PluginManager.getPlugin(), resourceType.id)
                 )
             }
-
             spawnedItem = item
+        }
 
-            PluginManager.getLogger().info(
-                "[Spawner] Заспавнен '${resourceType.displayName}' на " +
-                        "(${location.blockX}, ${location.blockY}, ${location.blockZ})"
-            )
+        fun setTeamMultiplier(mult: Double) {
+            this.teamMultiplier = mult
+            recalculatePeriod()
+        }
+
+        fun setGlobalMultiplier(mult: Double) {
+            this.globalMultiplier = mult
+            recalculatePeriod()
+        }
+
+        private fun recalculatePeriod() {
+            val totalMultiplier = teamMultiplier * globalMultiplier
+            currentMaxPeriod = (basePeriod / totalMultiplier).toLong().coerceAtLeast(1)
+
+            if (ticksRemaining > currentMaxPeriod) {
+                ticksRemaining = currentMaxPeriod
+            }
+        }
+
+        private fun startTickingTask() {
+            task?.cancel()
+            task = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
+
+                if (ticksRemaining <= 0) {
+                    spawnResource()
+                    ticksRemaining = currentMaxPeriod
+                }
+
+                val seconds = ticksRemaining / 20.0
+                val color = if (seconds <= 3.0) "§c" else "§7"
+
+                @Suppress("DEPRECATION")
+                timerHologram?.customName = "$color${String.format(Locale.US, "%.1f", seconds)}"
+
+                ticksRemaining--
+
+            }, 0L, 1L)
         }
     }
 }
