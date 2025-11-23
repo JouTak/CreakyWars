@@ -17,7 +17,8 @@ data class MapConfig(
     val teamSpawns: List<SpawnLocation>,
     val coreLocations: List<SpawnLocation>,
     val eyeblossomLocations: List<SpawnLocation>,
-    val creakingSpawnLocations: List<SpawnLocation>
+    val creakingSpawnLocations: List<SpawnLocation>,
+    val upgradeLocations: List<SpawnLocation>
 ) {
     companion object {
         private lateinit var config: FileConfiguration
@@ -69,6 +70,15 @@ data class MapConfig(
                         }
                     }
                     resourceSpawners[resourceType] = locations
+                }
+            }
+
+            val upgradeLocations = mapSection.getStringList("upgrade-locations").mapIndexed { index, locStr ->
+                try {
+                    SpawnLocation.fromString(locStr, "upgrade_$index")
+                } catch (e: Exception) {
+                    PluginManager.getLogger().warning("⚠ Ошибка парсинга локации улучшений[$index]: $locStr")
+                    throw e
                 }
             }
 
@@ -135,7 +145,8 @@ data class MapConfig(
                 teamSpawns,
                 coreLocations,
                 eyeblossomLocations,
-                creakingSpawnLocations
+                creakingSpawnLocations,
+                upgradeLocations
             )
         }
 

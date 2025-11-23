@@ -1,8 +1,11 @@
+@file:Suppress("DEPRECATION")
+
 package ru.joutak.creakywars.config
 
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.Material
+import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.inventory.ItemStack
 import ru.joutak.creakywars.resources.ResourceType
@@ -29,6 +32,9 @@ object GameConfig {
     var voidKillHeight: Int = 50
     var infiniteFood: Boolean = true
     val allowedBlocks = mutableSetOf<Material>()
+
+    data class UpgradeCost(val currency: String, val amount: Int)
+    val upgradeSettings = mutableMapOf<String, Any>()
 
     fun init() {
         val plugin = PluginManager.getPlugin()
@@ -59,6 +65,7 @@ object GameConfig {
         loadRespawnSettings()
         loadResources()
         loadTrades()
+        loadUpgrades()
 
         PluginManager.getLogger().info("✓ Игровой конфиг загружен!")
         PluginManager.getLogger().info("  - Разрешенных блоков: ${allowedBlocks.size}")
@@ -140,6 +147,45 @@ object GameConfig {
         }
     }
 
+    private fun loadUpgrades() {
+        upgradeSettings.clear()
+        val section = config.getConfigurationSection("upgrades") ?: return
+
+        fun parseCost(sec: ConfigurationSection?): UpgradeCost {
+            if (sec == null) return UpgradeCost("rubber_low", 999)
+            val costStr = sec.getString("cost", "rubber_low:999")!!
+            val parts = costStr.split(":")
+            return UpgradeCost(parts[0], parts.getOrNull(1)?.toIntOrNull() ?: 1)
+        }
+
+        upgradeSettings["forge_1_cost"] = parseCost(section.getConfigurationSection("forge.tier-1"))
+        upgradeSettings["forge_1_mult"] = section.getDouble("forge.tier-1.multiplier", 1.25)
+
+        upgradeSettings["forge_2_cost"] = parseCost(section.getConfigurationSection("forge.tier-2"))
+        upgradeSettings["forge_2_mult"] = section.getDouble("forge.tier-2.multiplier", 1.5)
+
+        upgradeSettings["forge_3_cost"] = parseCost(section.getConfigurationSection("forge.tier-3"))
+        upgradeSettings["forge_3_mult"] = section.getDouble("forge.tier-3.multiplier", 2.0)
+
+        upgradeSettings["forge_4_cost"] = parseCost(section.getConfigurationSection("forge.tier-4"))
+        upgradeSettings["forge_4_mult"] = section.getDouble("forge.tier-4.multiplier", 3.0)
+
+        upgradeSettings["prot_1_cost"] = parseCost(section.getConfigurationSection("protection.tier-1"))
+        upgradeSettings["prot_2_cost"] = parseCost(section.getConfigurationSection("protection.tier-2"))
+        upgradeSettings["prot_3_cost"] = parseCost(section.getConfigurationSection("protection.tier-3"))
+
+        upgradeSettings["sharp_cost"] = parseCost(section.getConfigurationSection("sharpness"))
+
+        upgradeSettings["eff_1_cost"] = parseCost(section.getConfigurationSection("efficiency.tier-1"))
+        upgradeSettings["eff_2_cost"] = parseCost(section.getConfigurationSection("efficiency.tier-2"))
+
+        upgradeSettings["respawn_cost"] = parseCost(section.getConfigurationSection("fast-respawn"))
+        upgradeSettings["respawn_time"] = section.getInt("fast-respawn.delay", 10)
+
+        upgradeSettings["trap_cost"] = parseCost(section.getConfigurationSection("trap"))
+        upgradeSettings["trap_range"] = section.getInt("trap.range", 15)
+    }
+
     private fun parseCost(costStr: String): Pair<String, Int> {
         val parts = costStr.split(":")
         val resourceId = parts[0]
@@ -166,7 +212,7 @@ object GameConfig {
                 if (enchantment != null) {
                     meta.addEnchant(enchantment, level, true)
                 }
-            } catch (e: Exception) { }
+            } catch (_: Exception) { }
         }
         item.itemMeta = meta
     }
