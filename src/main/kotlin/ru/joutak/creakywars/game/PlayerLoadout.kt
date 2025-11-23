@@ -6,8 +6,6 @@ import org.bukkit.enchantments.Enchantment
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
-import org.bukkit.inventory.meta.Damageable
-import org.bukkit.inventory.meta.ItemMeta
 import org.bukkit.inventory.meta.LeatherArmorMeta
 import ru.joutak.creakywars.utils.MessageUtils
 
@@ -21,6 +19,7 @@ data class PlayerLoadout(
     private var boots: ItemStack = makeUnbreakableArmor(createLeatherArmor(Material.LEATHER_BOOTS))
     private var sword: ItemStack = makeUnbreakable(ItemStack(Material.WOODEN_SWORD))
     private val permanentArmorUpgrades = mutableSetOf<String>()
+
 
     private fun createLeatherArmor(material: Material): ItemStack {
         val item = ItemStack(material)
@@ -38,7 +37,7 @@ data class PlayerLoadout(
         meta.setDisplayName("${team.color}Броня команды ${team.name}")
         meta.isUnbreakable = true
         meta.addEnchant(Enchantment.BINDING_CURSE, 1, true)
-        meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
+
         item.itemMeta = meta
         return item
     }
@@ -61,28 +60,81 @@ data class PlayerLoadout(
 
     fun giveDefaultLoadout() {
         player.inventory.clear()
+
+        applyTeamEnchants(helmet)
+        applyTeamEnchants(chestplate)
+        applyTeamEnchants(leggings)
+        applyTeamEnchants(boots)
+        applyTeamEnchants(sword)
+
         player.inventory.helmet = helmet
         player.inventory.chestplate = chestplate
         player.inventory.leggings = leggings
         player.inventory.boots = boots
-        player.inventory.addItem(makeUnbreakable(sword.clone()))
+
+        player.inventory.addItem(sword)
     }
 
-    fun restoreAfterDeath() {
-        player.inventory.clear()
-        player.inventory.helmet = helmet
-        player.inventory.chestplate = chestplate
-        player.inventory.leggings = leggings
-        player.inventory.boots = boots
-        player.inventory.addItem(makeUnbreakable(ItemStack(Material.WOODEN_SWORD)))
+    private fun applyTeamEnchants(item: ItemStack) {
+        val meta = item.itemMeta ?: return
+
+        if (isArmor(item.type)) {
+            if (team.protectionLevel > 0) {
+                meta.addEnchant(Enchantment.PROTECTION, team.protectionLevel, true)
+            }
+        }
+
+        if (isSword(item.type)) {
+            if (team.sharpnessLevel > 0) {
+                meta.addEnchant(Enchantment.SHARPNESS, team.sharpnessLevel, true)
+            }
+        }
+
+        if (isTool(item.type)) {
+            if (team.efficiencyLevel > 0) {
+                meta.addEnchant(Enchantment.EFFICIENCY, team.efficiencyLevel, true)
+            }
+        }
+
+        item.itemMeta = meta
+    }
+
+    fun refreshLoadout() {
+        val inv = player.inventory
+
+        listOf(inv.helmet, inv.chestplate, inv.leggings, inv.boots).forEach { item ->
+            if (item != null) applyTeamEnchants(item)
+        }
+
+        for (item in inv.contents) {
+            if (item != null && (isSword(item.type) || isTool(item.type))) {
+                applyTeamEnchants(item)
+            }
+        }
+    }
+
+    fun upgradeSword(newSword: ItemStack) {
+        val unbreakableSword = makeUnbreakable(newSword.clone())
+        applyTeamEnchants(unbreakableSword)
+
+        sword = unbreakableSword
+
+        for (i in 0 until player.inventory.size) {
+            val item = player.inventory.getItem(i)
+            if (item != null && isSword(item.type)) {
+                player.inventory.setItem(i, unbreakableSword)
+                break
+            }
+        }
+        MessageUtils.sendMessage(player, "§aМеч улучшен!")
     }
 
     fun upgradeArmor(armorType: String, item: ItemStack, silent: Boolean = false) {
         val upgradedItem = makeUnbreakableArmor(item.clone())
+        applyTeamEnchants(upgradedItem)
         val meta = upgradedItem.itemMeta
 
         meta?.addEnchant(Enchantment.BINDING_CURSE, 1, true)
-        meta?.addItemFlags(ItemFlag.HIDE_ENCHANTS)
         meta?.addItemFlags(ItemFlag.HIDE_UNBREAKABLE)
         @Suppress("DEPRECATION")
         meta?.setDisplayName("${team.color}${getArmorName(armorType)}")
@@ -112,9 +164,48 @@ data class PlayerLoadout(
         }
 
         if (!silent) {
-            MessageUtils.sendMessage(player, "§aБроня улучшена! Она сохранится после смерти.")
+            MessageUtils.sendMessage(player, "§aБроня улучшена!")
         }
     }
+
+    fun giveUnbreakableTool(tool: ItemStack) {
+        val item = makeUnbreakable(tool.clone())
+        applyTeamEnchants(item)
+        player.inventory.addItem(item)
+    }
+
+    fun restoreAfterDeath() {
+        player.inventory.clear()
+
+        applyTeamEnchants(helmet)
+        player.inventory.helmet = helmet
+
+        applyTeamEnchants(chestplate)
+        player.inventory.chestplate = chestplate
+
+        applyTeamEnchants(leggings)
+        player.inventory.leggings = leggings
+
+        applyTeamEnchants(boots)
+        player.inventory.boots = boots
+
+        val baseSword = ItemStack(Material.WOODEN_SWORD)
+        makeUnbreakable(baseSword)
+        applyTeamEnchants(baseSword)
+        player.inventory.addItem(baseSword)
+
+        sword = baseSword
+    }
+
+    private fun isArmor(material: Material): Boolean =
+        material.name.endsWith("_HELMET") || material.name.endsWith("_CHESTPLATE") ||
+                material.name.endsWith("_LEGGINGS") || material.name.endsWith("_BOOTS")
+
+    private fun isSword(material: Material): Boolean = material.name.endsWith("_SWORD")
+
+    private fun isTool(material: Material): Boolean =
+        material.name.endsWith("_PICKAXE") || material.name.endsWith("_AXE") ||
+                material.name.endsWith("_SHOVEL") || material == Material.SHEARS
 
     private fun getArmorName(armorType: String): String {
         return when (armorType.lowercase()) {
@@ -124,30 +215,6 @@ data class PlayerLoadout(
             "boots" -> "Ботинки"
             else -> "Броня"
         }
-    }
-
-    fun upgradeSword(newSword: ItemStack) {
-        val unbreakableSword = makeUnbreakable(newSword.clone())
-        for (i in 0 until player.inventory.size) {
-            val item = player.inventory.getItem(i)
-            if (item != null && isSword(item.type)) {
-                player.inventory.setItem(i, unbreakableSword)
-                break
-            }
-        }
-        MessageUtils.sendMessage(player, "§aМеч улучшен! §eПосле смерти вернется деревянный.")
-    }
-
-    fun giveUnbreakableTool(tool: ItemStack) {
-        player.inventory.addItem(makeUnbreakable(tool.clone()))
-    }
-
-    fun giveUnbreakableArmor(armor: ItemStack) {
-        player.inventory.addItem(makeUnbreakableArmor(armor.clone()))
-    }
-
-    private fun isSword(material: Material): Boolean {
-        return material.name.endsWith("_SWORD")
     }
 
     fun isPermanentUpgrade(upgrade: String): Boolean {
