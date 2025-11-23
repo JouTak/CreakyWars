@@ -11,6 +11,7 @@ import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.gui.ShopGui
 import ru.joutak.creakywars.utils.PluginManager
 
+@Suppress("DEPRECATION")
 class TraderListener : Listener {
 
     @EventHandler

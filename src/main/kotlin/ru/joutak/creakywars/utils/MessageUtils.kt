@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package ru.joutak.creakywars.utils
 
 import org.bukkit.entity.Player
@@ -21,7 +23,7 @@ object MessageUtils {
     fun sendActionBar(player: Player, message: String) {
         try {
             player.sendActionBar(message)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
     }
 }

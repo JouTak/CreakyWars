@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package ru.joutak.creakywars
 
 import org.bukkit.plugin.java.JavaPlugin
@@ -15,6 +17,7 @@ import ru.joutak.creakywars.queue.QueueManager
 import ru.joutak.creakywars.resources.ResourceSpawner
 import ru.joutak.creakywars.spartakiada.SpartakiadaManager
 import ru.joutak.creakywars.trading.TraderManager
+import ru.joutak.creakywars.upgrades.UpgradeListener
 import ru.joutak.creakywars.utils.PluginManager
 
 class CreakyWars : JavaPlugin() {
@@ -75,10 +78,11 @@ class CreakyWars : JavaPlugin() {
         val pm = server.pluginManager
         pm.registerEvents(PlayerListener(), this)
         pm.registerEvents(GameListener(), this)
-        pm.registerEvents(CoreListener(), this)
+        pm.registerEvents(ExplosivesListener(), this)
         pm.registerEvents(EyeblossomListener(), this)
         pm.registerEvents(TraderListener(), this)
         pm.registerEvents(CreakingListener(), this)
+        pm.registerEvents(UpgradeListener(), this)
         logger.info("✓ Все слушатели зарегистрированы!")
 
         // === ФИНАЛЬНОЕ СООБЩЕНИЕ ===

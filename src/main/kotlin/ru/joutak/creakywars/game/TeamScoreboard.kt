@@ -6,6 +6,7 @@ import org.bukkit.scoreboard.DisplaySlot
 import org.bukkit.scoreboard.Objective
 import org.bukkit.scoreboard.Scoreboard
 
+@Suppress("DEPRECATION")
 class TeamScoreboard(private val game: Game) {
     private val scoreboard: Scoreboard = Bukkit.getScoreboardManager()!!.newScoreboard
     private val objective: Objective

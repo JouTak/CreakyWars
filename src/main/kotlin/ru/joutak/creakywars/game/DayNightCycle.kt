@@ -13,6 +13,7 @@ import ru.joutak.creakywars.utils.SpawnLocation
 import kotlin.math.cos
 import kotlin.math.sin
 
+@Suppress("DEPRECATION", "SameParameterValue")
 class DayNightCycle(private val game: Game) {
 
     private var cycleTask: BukkitTask? = null
@@ -30,7 +31,6 @@ class DayNightCycle(private val game: Game) {
 
     private val EYEBLOSSOM_OPEN_DURATION = 1200L
 
-    // ЦЕНТР КАРТЫ (используется и для волны, и для проверки дистанции Скрипунов)
     private val WAVE_CENTER = Location(game.arena.world, 0.0, 70.0, 0.0)
     private val WAVE_MAX_RADIUS = 30.0
     private val WAVE_DURATION = 100L

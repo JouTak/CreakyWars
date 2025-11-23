@@ -18,6 +18,7 @@ import ru.joutak.creakywars.utils.PluginManager
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 
+@Suppress("DEPRECATION")
 class CreakyCommands : CommandExecutor, TabCompleter {
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {

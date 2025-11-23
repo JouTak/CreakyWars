@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package ru.joutak.creakywars.gui
 
 import org.bukkit.Bukkit
