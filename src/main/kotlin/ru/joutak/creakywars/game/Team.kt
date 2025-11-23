@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package ru.joutak.creakywars.game
 
 import org.bukkit.ChatColor
@@ -15,6 +17,13 @@ data class Team(
     var coreDestroyed: Boolean = false,
     var livesRemaining: Int = -1
 ) {
+    var forgeTier: Int = 0
+    var protectionLevel: Int = 0
+    var sharpnessLevel: Int = 0
+    var efficiencyLevel: Int = 0
+    var hasFastRespawn: Boolean = false
+    var trapActive: Boolean = false
+
     fun addPlayer(player: UUID) {
         players.add(player)
     }
