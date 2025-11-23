@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package ru.joutak.creakywars.trading
 
 import org.bukkit.Bukkit

@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package ru.joutak.creakywars.gui
 
 import org.bukkit.Bukkit
@@ -8,8 +10,10 @@ import org.bukkit.enchantments.Enchantment
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
+import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryCloseEvent
+import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemFlag
@@ -20,13 +24,16 @@ import ru.joutak.creakywars.game.Game
 import ru.joutak.creakywars.trading.Trade
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
+import java.util.UUID
 import java.util.logging.Level
 
 object ShopGui : Listener {
-    private val openInventories = mutableMapOf<Player, Pair<Game, String>>()
+    private val openInventories = mutableMapOf<UUID, Pair<Game, String>>()
 
     private val TRADE_ID_KEY = NamespacedKey(PluginManager.getPlugin(), "trade_id")
     private val CATEGORY_KEY = NamespacedKey(PluginManager.getPlugin(), "category_id")
+
+    private const val MENU_TITLE_PREFIX = "§6§lМагазин"
 
     private val categories = mapOf(
         "blocks" to "§aБлоки",
@@ -52,11 +59,13 @@ object ShopGui : Listener {
         Bukkit.getPluginManager().registerEvents(this, PluginManager.getPlugin())
     }
 
+    fun init() {}
+
     fun open(player: Player, game: Game) {
         val category = "blocks"
-        val inventory = Bukkit.createInventory(null, 54, "§6§lМагазин - ${categories[category]}")
+        val inventory = Bukkit.createInventory(null, 54, "$MENU_TITLE_PREFIX - ${categories[category]}")
 
-        openInventories[player] = Pair(game, category)
+        openInventories[player.uniqueId] = Pair(game, category)
         updateInventoryItems(inventory, player, game, category)
 
         player.openInventory(inventory)
@@ -105,7 +114,7 @@ object ShopGui : Listener {
         val meta = item.itemMeta ?: Bukkit.getItemFactory().getItemMeta(item.type)!!
         meta.persistentDataContainer.set(TRADE_ID_KEY, PersistentDataType.STRING, trade.id)
 
-        if (trade.displayName?.contains("Откидывающая палка") == true) {
+        if (trade.displayName.contains("Откидывающая палка")) {
             meta.addEnchant(Enchantment.KNOCKBACK, 2, true)
         }
 
@@ -138,17 +147,39 @@ object ShopGui : Listener {
     }
 
     @EventHandler
+    fun onInventoryDrag(event: InventoryDragEvent) {
+        if (event.view.title.startsWith(MENU_TITLE_PREFIX)) {
+            if (event.rawSlots.any { it < event.view.topInventory.size }) {
+                event.isCancelled = true
+            }
+        }
+    }
+
+    @EventHandler
     fun onInventoryClick(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
-        val shopData = openInventories[player] ?: return
 
-        event.isCancelled = true
+        if (event.view.title.startsWith(MENU_TITLE_PREFIX)) {
+            if (event.action == InventoryAction.COLLECT_TO_CURSOR) {
+                event.isCancelled = true
+                return
+            }
 
+            if (event.clickedInventory === event.view.topInventory) {
+                event.isCancelled = true
+            } else if (event.isShiftClick && event.clickedInventory === event.view.bottomInventory) {
+                event.isCancelled = true
+            }
+        } else {
+            return
+        }
+
+        val shopData = openInventories[player.uniqueId] ?: return
         val clickedInventory = event.clickedInventory ?: return
-        if (clickedInventory !== player.openInventory.topInventory) return
-
         val clickedItem = event.currentItem ?: return
         if (clickedItem.type.isAir) return
+
+        if (clickedInventory !== event.view.topInventory) return
 
         val meta = clickedItem.itemMeta ?: return
         val (game, currentCategory) = shopData
@@ -156,7 +187,7 @@ object ShopGui : Listener {
         meta.persistentDataContainer.get(CATEGORY_KEY, PersistentDataType.STRING)?.let { newCategory ->
             if (newCategory != currentCategory) {
                 player.playSound(player.location, Sound.UI_BUTTON_CLICK, 1f, 1f)
-                openInventories[player] = Pair(game, newCategory)
+                openInventories[player.uniqueId] = Pair(game, newCategory)
                 updateInventoryItems(clickedInventory, player, game, newCategory)
             }
             return
@@ -222,8 +253,20 @@ object ShopGui : Listener {
         }
     }
 
+    @EventHandler
+    fun onInventoryClose(event: InventoryCloseEvent) {
+        if (openInventories.remove(event.player.uniqueId) != null) {
+            PluginManager.getPlugin().logger.log(Level.INFO, "[ShopGui] Инвентарь закрыт для ${event.player.name}. Удален из списка.")
+        }
+    }
+
+    @EventHandler
+    fun onPlayerQuit(event: PlayerQuitEvent) {
+        openInventories.remove(event.player.uniqueId)
+    }
+
     private fun createPurchasedItem(trade: Trade, team: ru.joutak.creakywars.game.Team?): ItemStack {
-        var item = if (team != null && shouldUseTeamColor(trade.result.type)) {
+        val item = if (team != null && shouldUseTeamColor(trade.result.type)) {
             convertToTeamColor(trade.result.clone(), team.woolColor)
         } else {
             trade.result.clone()
@@ -311,17 +354,6 @@ object ShopGui : Listener {
         return boots
     }
 
-    @EventHandler
-    fun onInventoryClose(event: InventoryCloseEvent) {
-        if (openInventories.remove(event.player) != null) {
-            PluginManager.getPlugin().logger.log(Level.INFO, "[ShopGui] Инвентарь закрыт для ${event.player.name}. Удален из списка.")
-        }
-    }
-
-    @EventHandler
-    fun onPlayerQuit(event: PlayerQuitEvent) {
-        openInventories.remove(event.player)
-    }
 
     private fun countResources(player: Player, material: Material): Int =
         player.inventory.contents.filterNotNull()
