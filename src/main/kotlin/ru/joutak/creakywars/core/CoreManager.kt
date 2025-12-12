@@ -96,6 +96,16 @@ object CoreManager : Listener {
 
         val game = GameManager.getGame(player) ?: return
 
+        if (core.isDestroyed) {
+            event.isCancelled = true
+            return
+        }
+
+        if (core.team.players.isEmpty()) {
+            event.isCancelled = true
+            return
+        }
+
         val playerTeam = game.getTeam(player)
         if (playerTeam == core.team) {
             event.isCancelled = true
@@ -143,12 +153,14 @@ object CoreManager : Listener {
             if (block.type != Material.CREAKING_HEART) {
                 PluginManager.getLogger().warning("Ядро команды ${team.name} было заменено! Восстанавливаем...")
                 block.type = Material.CREAKING_HEART
-                setActive(true)
-                return
             }
 
-            if (!isActive()) {
+            val requiredActivity = !isDestroyed && team.players.isNotEmpty()
+
+            if (requiredActivity && !isActive()) {
                 setActive(true)
+            } else if (!requiredActivity && isActive()) {
+                setActive(false)
             }
         }
 
@@ -181,11 +193,7 @@ object CoreManager : Listener {
         fun destroy(destroyer: Player?) {
             isDestroyed = true
             setActive(false)
-
-            Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
-                coreBlock?.type = Material.AIR
-                hologram?.remove()
-            }, 20L)
+            hologram?.remove()
         }
 
         fun remove() {
