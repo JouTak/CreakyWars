@@ -106,9 +106,32 @@ object ArenaManager {
     }
 
     private fun deleteExistingArenas() {
+        val mvWorldsToDelete = multiverseCore.mvWorldManager.mvWorlds
+            .filter { it.name.startsWith("cw_game_") }
+            .map { it.name }
+            .toSet()
+
+        if (mvWorldsToDelete.isNotEmpty()) {
+            PluginManager.getLogger().info("Обнаружено ${mvWorldsToDelete.size} старых игровых арен для удаления через Multiverse...")
+        }
+
+        mvWorldsToDelete.forEach { worldName ->
+            PluginManager.getLogger().info("Удаление старой арены: $worldName")
+            if (multiverseCore.mvWorldManager.deleteWorld(worldName, true, true)) {
+                PluginManager.getLogger().info("Успешно удалена арена $worldName.")
+            } else {
+                PluginManager.getLogger().warning("Не удалось удалить мир '$worldName' через Multiverse-Core. Попытка удалить папку вручную.")
+            }
+        }
+
         val worldContainer = Bukkit.getWorldContainer()
         worldContainer.listFiles { f -> f.isDirectory && f.name.startsWith("cw_game_") }?.forEach {
+            PluginManager.getLogger().info("Удаление оставшейся папки: ${it.name}")
             it.deleteRecursively()
         }
+
+        PluginManager.getLogger().info("Очистка старых арен завершена. Сброс счетчика ID.")
+
+        nextArenaId = 1
     }
 }
