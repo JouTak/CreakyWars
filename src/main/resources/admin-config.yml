@@ -1,5 +1,3 @@
-# Административный конфиг CreakyWars
-# Для настройки серверной части игры
 debug:
   enabled: false
 
@@ -11,19 +9,13 @@ games:
   max-parallel: 1
 
 teams:
-  # Максимальное количество игроков в команде
   max-players-per-team: 4
-  # Количество команд
   count: 4
 
 players:
-  # Максимальное количество игроков в игре
   max: 16
-  # Процент игроков от максимума для начала игры
   min-percent-to-start: 0.125
 
 world:
-  # Размер границы мира
   border-size: 261.0
-  # Название мира-шаблона
   template-name: game

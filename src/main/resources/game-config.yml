@@ -1,11 +1,8 @@
-# Игровой конфиг CreakyWars
-
 settings:
-  protection-radius: 2.0  # Радиус привата точек интереса
+  protection-radius: 2.0
   void-kill-height: 50
   infinite-food: true
 
-# Блоки, которые игроки могут ломать и ставить
 allowed-blocks:
   - OAK_PLANKS
   - CLAY
@@ -43,16 +40,17 @@ allowed-blocks:
   - PURPLE_WOOL
   - BROWN_WOOL
   - BLACK_WOOL
+  - TNT
 
 day-night-cycle:
   day-duration-ticks: 6000
   night-duration-ticks: 6000
   eyeblossom-open-percent: 0.5
   creaking-aggro-radius: 60.0
-  creakingBreakSpeed: 1.0
+  creakingBreakSpeed: 10.0
 
 respawn:
-  delay-seconds: 15
+  delay-seconds: 10
   spectator-mode: true
 
 resources:
@@ -69,7 +67,7 @@ resources:
     tier: 2
 
   rubber_high:
-    material: NETHER_BRICK
+    material: NETHERITE_INGOT
     display-name: "§dСлишком прочная резина"
     spawn-period: 360
     tier: 3
@@ -77,8 +75,9 @@ resources:
   eyeblossom:
     material: OPEN_EYEBLOSSOM
     display-name: "§2Открытая глазалия"
-    spawn-period: -1
-    tier: 2
+    spawn-period: -1  # NOT spawn automatically
+    tier: 3
+
 
 trades:
   wool:
@@ -94,7 +93,7 @@ trades:
     category: "blocks"
 
   end_stone:
-    cost: "rubber_low:24"
+    cost: "rubber_mid:6"
     result: "END_STONE:12"
     display-name: "Эндерстоун"
     category: "blocks"
@@ -106,13 +105,13 @@ trades:
     category: "blocks"
 
   obsidian:
-    cost: "eyeblossom:4"
-    result: "OBSIDIAN:4"
+    cost: "eyeblossom:2"
+    result: "OBSIDIAN:1"
     display-name: "Обсидиан"
     category: "blocks"
 
   stone_sword:
-    cost: "rubber_low:15"
+    cost: "rubber_low:10"
     result: "STONE_SWORD:1"
     display-name: "Каменный меч"
     category: "swords"
@@ -123,19 +122,19 @@ trades:
     display-name: "Железный меч"
     category: "swords"
 
-  diamond_sword:
+  netherite_sword:
     cost: "eyeblossom:4"
-    result: "DIAMOND_SWORD:1"
-    display-name: "Алмазный меч"
+    result: "NETHERITE_SWORD:1"
+    display-name: "Незеритовый меч"
     category: "swords"
 
   knockback_stick:
-    cost: "rubber_mid:10"
+    cost: "rubber_mid:15"
     result: "STICK:1"
     display-name: "Откидывающая палка"
     category: "swords"
     enchantments:
-      - "KNOCKBACK:1"
+      - "KNOCKBACK:2"
 
   chainmail_armor:
     cost: "rubber_low:40"
@@ -149,20 +148,21 @@ trades:
     display-name: "Железная броня"
     category: "armor"
 
-  diamond_armor:
+  netherite_armor:
     cost: "eyeblossom:6"
-    result: "DIAMOND_LEGGINGS:1"
-    display-name: "Алмазная броня"
+    result: "NETHERITE_LEGGINGS:1"
+    display-name: "Незеритовая броня"
     category: "armor"
 
+  # Tools
   wooden_pickaxe:
-    cost: "rubber_low:15"
+    cost: "rubber_low:20"
     result: "WOODEN_PICKAXE:1"
     display-name: "Деревянная кирка"
     category: "tools"
 
   wooden_axe:
-    cost: "rubber_low:15"
+    cost: "rubber_low:20"
     result: "WOODEN_AXE:1"
     display-name: "Деревянный топор"
     category: "tools"
@@ -180,27 +180,27 @@ trades:
     category: "tools"
 
   iron_pickaxe:
-    cost: "rubber_mid:12"
+    cost: "rubber_low:30"
     result: "IRON_PICKAXE:1"
     display-name: "Железная кирка"
     category: "tools"
 
   iron_axe:
-    cost: "rubber_mid:12"
+    cost: "rubber_low:30"
     result: "IRON_AXE:1"
     display-name: "Железный топор"
     category: "tools"
 
-  diamond_pickaxe:
-    cost: "rubber_high:4"
-    result: "DIAMOND_PICKAXE:1"
-    display-name: "Алмазная кирка"
+  netherite_pickaxe:
+    cost: "rubber_mid:9"
+    result: "NETHERITE_PICKAXE:1"
+    display-name: "Незеритовая кирка"
     category: "tools"
 
-  diamond_axe:
-    cost: "rubber_high:4"
-    result: "DIAMOND_AXE:1"
-    display-name: "Алмазный топор"
+  netherite_axe:
+    cost: "rubber_mid:12"
+    result: "NETHERITE_AXE:1"
+    display-name: "Незеритовый топор"
     category: "tools"
 
   shears:
@@ -215,6 +215,12 @@ trades:
     display-name: "Огненный шар"
     category: "special"
 
+  tnt:
+    cost: "rubber_low:40"
+    result: "TNT:1"
+    display-name: "Динамит"
+    category: "special"
+
   golden_apple:
     cost: "rubber_mid:3"
     result: "GOLDEN_APPLE:1"
@@ -222,15 +228,9 @@ trades:
     category: "special"
 
   ender_eye:
-    cost: "eyeblossom:4"
+    cost: "eyeblossom:2"
     result: "ENDER_PEARL:1"
-    display-name: "Око Края"
-    category: "special"
-
-  tnt:
-    cost: "rubber_mid:8"
-    result: "TNT:1"
-    display-name: "Динамит"
+    display-name: "Эндер-дисса"
     category: "special"
 
 upgrades:
@@ -273,7 +273,7 @@ upgrades:
 
   fast-respawn:
     cost: "rubber_high:10"
-    delay: 10 # seconds
+    delay: 10
 
   trap:
     cost: "rubber_high:10"

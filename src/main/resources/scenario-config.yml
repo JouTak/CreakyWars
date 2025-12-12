@@ -1,10 +1,7 @@
-# Конфиг сценария игры CreakyWars
-# Фазы игры и их параметры
-
 phases:
   phase1:
     name: "Фаза 1: Подготовка"
-    duration: 600  # в секундах
+    duration: 600  # in seconds
     resource-multiplier: 1.0
     respawn-enabled: true
     border-shrink: false
