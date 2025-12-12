@@ -9,7 +9,6 @@ import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.FoodLevelChangeEvent
-import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.inventory.CraftItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
@@ -109,7 +108,7 @@ class GameListener : Listener {
 
         if (game.arena.state != ArenaState.IN_GAME) return
 
-        if (player.location.y < GameConfig.voidKillHeight) {
+        if (player.gameMode == GameMode.SURVIVAL && player.location.y < GameConfig.voidKillHeight) {
             player.health = 0.0
         }
     }
@@ -135,27 +134,6 @@ class GameListener : Listener {
         if (damagerTeam == victimTeam) {
             event.isCancelled = true
         }
-    }
-
-    @EventHandler
-    fun onPlayerDeath(event: PlayerDeathEvent) {
-        val player = event.entity
-
-        if (player.gameMode != GameMode.SURVIVAL) {
-            return
-        }
-
-        event.deathMessage = null
-
-        val game = GameManager.getGame(player) ?: return
-
-        val killer = player.killer
-
-        event.drops.clear()
-        event.keepLevel = false
-        event.droppedExp = 0
-
-        game.handlePlayerDeath(player, killer)
     }
 
     @EventHandler
