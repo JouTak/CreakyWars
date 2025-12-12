@@ -6,6 +6,8 @@ import org.bukkit.Material
 import org.bukkit.Particle
 import org.bukkit.entity.Creaking
 import org.bukkit.entity.EntityType
+import org.bukkit.potion.PotionEffect
+import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.utils.PluginManager
@@ -369,6 +371,13 @@ class DayNightCycle(private val game: Game) {
                 entity.health = 1000.0
                 entity.fireTicks = 0
                 entity.setGravity(true)
+
+                entity.addPotionEffect(
+                    PotionEffect(PotionEffectType.SPEED, Int.MAX_VALUE, 0, false, false)
+                )
+                entity.addPotionEffect(
+                    PotionEffect(PotionEffectType.STRENGTH, Int.MAX_VALUE, 0, false, false)
+                )
 
                 PluginManager.getLogger().info("[Арена #${game.arena.id}] Скрипун заспавнен в ${spawnLoc.x}, ${spawnLoc.y}, ${spawnLoc.z}")
             }
