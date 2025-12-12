@@ -19,6 +19,7 @@ repositories {
         name = "sonatype"
     }
     maven("https://repo.onarandombox.com/content/groups/public/")
+    maven("https://maven.joutak.ru/snapshots")
 }
 
 dependencies {
@@ -27,6 +28,7 @@ dependencies {
 
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
+    implementation("ru.joutak:minigamesapi:1.0.0-54")
 }
 
 kotlin {
