@@ -5,6 +5,7 @@ import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.Sound
 import org.bukkit.entity.Player
+import org.bukkit.event.HandlerList
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.arenas.Arena
 import ru.joutak.creakywars.arenas.ArenaState
@@ -12,6 +13,7 @@ import ru.joutak.creakywars.config.AdminConfig
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.config.ScenarioConfig
 import ru.joutak.creakywars.core.CoreManager
+import ru.joutak.creakywars.listeners.TeamChestListener
 import ru.joutak.creakywars.resources.ResourceSpawner
 import ru.joutak.creakywars.trading.TraderManager
 import ru.joutak.creakywars.utils.MessageUtils
@@ -35,6 +37,7 @@ class Game(
     private val dayNightCycle = DayNightCycle(this)
     private val phaseBossBar = PhaseBossBar(this)
     private val teamScoreboard = TeamScoreboard(this)
+    private val teamChestListener: TeamChestListener
 
     private val respawnTimers = mutableMapOf<UUID, BukkitTask>()
 
@@ -43,6 +46,10 @@ class Game(
 
     val activePlayers: List<Player>
         get() = players.filter { getPlayerData(it)?.isAlive == true }
+
+    init {
+        teamChestListener = TeamChestListener(this)
+    }
 
     fun addPlayer(player: Player, team: Team) {
         val data = PlayerData(player.uniqueId, team)
@@ -122,7 +129,12 @@ class Game(
             teamScoreboard.addPlayer(player)
         }
 
-        CoreManager.initializeCores(this, activeTeams)
+        teamScoreboard.update()
+
+        setupTeamChests()
+
+        CoreManager.initializeCores(this, teams)
+
         ResourceSpawner.startSpawning(this)
         TraderManager.spawnTraders(this)
 
@@ -145,6 +157,27 @@ class Game(
         broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
     }
 
+    private fun setupTeamChests() {
+        if (teams.size != arena.mapConfig.teamChestLocations.size) {
+            PluginManager.getLogger().warning("Количество команд (${teams.size}) не совпадает с количеством командных сундуков (${arena.mapConfig.teamChestLocations.size}) в конфиге!")
+            return
+        }
+
+        teams.forEachIndexed { index, team ->
+            val chestLoc = arena.mapConfig.teamChestLocations.getOrNull(index)?.toLocation(arena.world)
+            if (chestLoc != null) {
+                val block = chestLoc.block
+                block.type = Material.CHEST
+                teamChestListener.addTeamChest(block, team)
+            }
+        }
+
+        arena.mapConfig.enderChestLocations.forEach { spawnLoc ->
+            val loc = spawnLoc.toLocation(arena.world)
+            loc.block.type = Material.ENDER_CHEST
+        }
+    }
+
     fun getActiveTeams(): List<Team> {
         return teams.filter { it.players.isNotEmpty() }
     }
@@ -164,6 +197,8 @@ class Game(
 
                 if (currentPhaseIndex + 1 < ScenarioConfig.phases.size) {
                     startPhase(currentPhaseIndex + 1)
+                } else {
+                    currentPhaseIndex++
                 }
             }
 
@@ -176,11 +211,9 @@ class Game(
                     )
                 }
             }
-
-            checkWinCondition()
         }
 
-        checkWinCondition()
+        checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
     }
 
     private fun startPhase(phaseIndex: Int) {
@@ -192,6 +225,18 @@ class Game(
         ResourceSpawner.setMultiplier(this, phase.resourceMultiplier)
 
         phaseBossBar.create(phaseIndex)
+
+        if (!phase.respawnEnabled) {
+            val teamsToDestroy = teams.filter { it.players.isNotEmpty() && !it.coreDestroyed }
+
+            teamsToDestroy.forEach { team ->
+                handleCoreDestroyed(team, null)
+            }
+
+            if (teamsToDestroy.isNotEmpty()) {
+                broadcastMessage("§c§l>>> §6Все ядра были уничтожены! §cРеспавн отключен!")
+            }
+        }
 
         if (phase.startMessage.isNotEmpty()) {
             broadcastTitle("§6${phase.name}", "§e${phase.startMessage}")
@@ -283,40 +328,51 @@ class Game(
     }
 
     private fun transferResourcesToKiller(victim: Player, killer: Player) {
-        val resourceMaterials = setOf(
-            Material.NETHER_BRICK,
-            Material.RESIN_BRICK,
-            Material.RESIN_BRICKS,
-            Material.OPEN_EYEBLOSSOM
-        )
+        val resourceTypes = ru.joutak.creakywars.config.GameConfig.resourceTypes.values
+        val materialToResourceType = resourceTypes.associateBy { it.material }
 
         var totalTransferred = 0
-        val transferredItems = mutableListOf<String>()
+        val transferredItems = mutableListOf<Pair<String, Int>>()
 
-        victim.inventory.contents.forEach { item ->
-            if (item != null && resourceMaterials.contains(item.type)) {
-                val amount = item.amount
-                val displayName = when (item.type) {
-                    Material.RESIN_CLUMP -> "§7Резина"
-                    Material.RESIN_BRICK -> "§6Прочная резина"
-                    Material.RESIN_BRICKS -> "§dРезиновый блок"
-                    Material.OPEN_EYEBLOSSOM -> "§2Открытая глазалия"
-                    else -> item.type.name
-                }
+        for (i in 0 until victim.inventory.size) {
+            val item = victim.inventory.getItem(i)
+            if (item == null) continue
 
-                val leftover = killer.inventory.addItem(item.clone())
+            val resourceType = materialToResourceType[item.type]
+            if (resourceType != null) {
+                val itemToTransfer = item.clone()
+                val amountBefore = item.amount
 
-                if (leftover.isEmpty()) {
-                    totalTransferred += amount
-                    transferredItems.add("§e$amount§7x $displayName")
-                } else {
-                    val transferred = amount - leftover.values.sumOf { it.amount }
-                    if (transferred > 0) {
-                        totalTransferred += transferred
-                        transferredItems.add("§e$transferred§7x $displayName")
+                val leftover = killer.inventory.addItem(itemToTransfer)
+
+                val transferredAmount = amountBefore - leftover.values.sumOf { it.amount }
+
+                if (transferredAmount > 0) {
+                    totalTransferred += transferredAmount
+
+                    transferredItems.add(resourceType.displayName to transferredAmount)
+
+                    val victimItem = victim.inventory.getItem(i)
+                    if (victimItem != null) {
+                        if (victimItem.amount <= transferredAmount) {
+                            victim.inventory.setItem(i, null)
+                        } else {
+                            victimItem.amount -= transferredAmount
+                        }
                     }
                 }
             }
+        }
+
+        if (totalTransferred > 0) {
+            val messageParts = transferredItems
+                .groupBy { it.first }
+                .map { (displayName, pairs) ->
+                    val sum = pairs.sumOf { it.second }
+                    "§e$sum§7x $displayName"
+                }
+
+            val itemsList = messageParts.joinToString(", ")
         }
     }
 
@@ -327,7 +383,12 @@ class Game(
         val data = getPlayerData(player) ?: return
         val team = data.team ?: return
 
-        val delaySeconds = GameConfig.respawnDelaySeconds
+        var delaySeconds = GameConfig.respawnDelaySeconds
+
+        if (team.hasFastRespawn) {
+            val fastRespawnTime = GameConfig.upgradeSettings["respawn_time"] as? Int ?: 10
+            delaySeconds = fastRespawnTime
+        }
 
         if (GameConfig.respawnSpectatorMode) {
             player.gameMode = GameMode.SPECTATOR
@@ -403,7 +464,7 @@ class Game(
         }
     }
 
-    private fun checkWinCondition() {
+    private fun checkWinCondition(phasesFinished: Boolean = false) {
         val aliveTeams = teams.filter { !it.isEliminated(this) }
 
         if (isDebugMode) {
@@ -433,6 +494,10 @@ class Game(
                 PluginManager.getLogger().info("Игра #${arena.id}: ничья, все команды выбыли")
                 endGame(null)
             }
+            phasesFinished && aliveTeams.size > 1 -> {
+                PluginManager.getLogger().info("Игра #${arena.id}: ничья по истечении фаз")
+                endGame(null)
+            }
         }
     }
 
@@ -448,11 +513,12 @@ class Game(
         ResourceSpawner.stopSpawning(this)
         TraderManager.removeTraders(this)
 
+        disableListeners()
+
         if (winnerTeam != null) {
             broadcastTitle("§6Победа!", "§e${winnerTeam.color}${winnerTeam.name}")
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
             broadcastMessage("§6§lПОБЕДА: ${winnerTeam.color}${winnerTeam.name}")
-            broadcastMessage("")
             displayStats()
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
 
@@ -462,11 +528,16 @@ class Game(
         } else {
             broadcastTitle("§eНичья!", "§7Никто не победил")
             broadcastMessage("§7Игра завершилась ничьей!")
+            displayStats()
         }
 
         Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
             cleanup()
         }, 200L)
+    }
+
+    fun disableListeners() {
+        HandlerList.unregisterAll(teamChestListener)
     }
 
     private fun displayStats() {
@@ -491,6 +562,9 @@ class Game(
             player.inventory.clear()
             player.health = 20.0
             player.foodLevel = 20
+            player.saturation = 20f
+            player.fireTicks = 0
+            player.gameMode = GameMode.ADVENTURE
         }
 
         phaseBossBar.remove()
@@ -527,12 +601,11 @@ class Game(
         team.coreDestroyed = true
 
         if (destroyer != null) {
-            broadcastTitle("§c${team.name}", "§eядро уничтожено ${destroyer.name}!")
+            broadcastTitle("${team.color}${team.name}", "§eядро уничтожено ${destroyer.name}!")
+            broadcastMessage("§c§l⚠ §6Ядро команды ${team.color}${team.name} §6уничтожено! §c§l⚠")
         } else {
             broadcastTitle("§c${team.name}", "§eядро уничтожено!")
         }
-
-        broadcastMessage("§c§l⚠ §6Ядро команды ${team.color}${team.name} §6уничтожено! §c§l⚠")
 
         team.getOnlinePlayers().forEach { player ->
             val data = getPlayerData(player)
@@ -593,6 +666,8 @@ class Game(
         if (AdminConfig.debugMode) {
             PluginManager.getLogger().info("[DEBUG] Игрок ${player.name} удален из игры")
         }
+
+        checkWinCondition()
 
         if (playerData.isEmpty()) {
             PluginManager.getLogger().info("Все игроки покинули игру на арене #${arena.id}")

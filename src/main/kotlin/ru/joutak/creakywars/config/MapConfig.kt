@@ -18,7 +18,9 @@ data class MapConfig(
     val coreLocations: List<SpawnLocation>,
     val eyeblossomLocations: List<SpawnLocation>,
     val creakingSpawnLocations: List<SpawnLocation>,
-    val upgradeLocations: List<SpawnLocation>
+    val upgradeLocations: List<SpawnLocation>,
+    val teamChestLocations: List<SpawnLocation>,
+    val enderChestLocations: List<SpawnLocation>
 ) {
     companion object {
         private lateinit var config: FileConfiguration
@@ -56,7 +58,6 @@ data class MapConfig(
             val timeOfDay = mapSection.getLong("time-of-day", 6000L)
             val weather = mapSection.getString("weather", "clear") ?: "clear"
 
-            // Генераторы
             val resourceSpawners = mutableMapOf<String, List<SpawnLocation>>()
             val spawnersSection = mapSection.getConfigurationSection("resource-spawners")
             if (spawnersSection != null) {
@@ -82,7 +83,6 @@ data class MapConfig(
                 }
             }
 
-            // Торговцы
             val traderLocations = mapSection.getStringList("trader-locations").mapIndexed { index, locStr ->
                 try {
                     SpawnLocation.fromString(locStr, "trader_$index")
@@ -92,7 +92,6 @@ data class MapConfig(
                 }
             }
 
-            // Спавны команд
             val teamSpawns = mapSection.getStringList("team-spawns").mapIndexed { index, locStr ->
                 try {
                     SpawnLocation.fromString(locStr, "team_$index")
@@ -102,7 +101,6 @@ data class MapConfig(
                 }
             }
 
-            // Ядра
             val coreLocations = mapSection.getStringList("core-locations").mapIndexed { index, locStr ->
                 try {
                     SpawnLocation.fromString(locStr, "core_$index")
@@ -112,7 +110,6 @@ data class MapConfig(
                 }
             }
 
-            // Глазосветы
             val eyeblossomLocations = mapSection.getStringList("eyeblossom-locations").mapIndexed { index, locStr ->
                 try {
                     SpawnLocation.fromString(locStr, "eyeblossom_$index")
@@ -122,12 +119,29 @@ data class MapConfig(
                 }
             }
 
-            // Скрипуны
             val creakingSpawnLocations = mapSection.getStringList("creaking-spawns").mapIndexed { index, locStr ->
                 try {
                     SpawnLocation.fromString(locStr, "creaking_spawn_$index")
                 } catch (e: Exception) {
                     PluginManager.getLogger().warning("⚠ Ошибка парсинга спавна Скрипуна[$index]: $locStr")
+                    throw e
+                }
+            }
+
+            val teamChestLocations = mapSection.getStringList("team-chest-locations").mapIndexed { index, locStr ->
+                try {
+                    SpawnLocation.fromString(locStr, "team_chest_$index")
+                } catch (e: Exception) {
+                    PluginManager.getLogger().warning("⚠ Ошибка парсинга локации командного сундука[$index]: $locStr")
+                    throw e
+                }
+            }
+
+            val enderChestLocations = mapSection.getStringList("ender-chest-locations").mapIndexed { index, locStr ->
+                try {
+                    SpawnLocation.fromString(locStr, "ender_chest_$index")
+                } catch (e: Exception) {
+                    PluginManager.getLogger().warning("⚠ Ошибка парсинга локации эндер сундука[$index]: $locStr")
                     throw e
                 }
             }
@@ -146,7 +160,9 @@ data class MapConfig(
                 coreLocations,
                 eyeblossomLocations,
                 creakingSpawnLocations,
-                upgradeLocations
+                upgradeLocations,
+                teamChestLocations,
+                enderChestLocations
             )
         }
 
