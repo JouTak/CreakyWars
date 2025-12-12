@@ -45,7 +45,7 @@ class TeamChestListener(private val game: Game) : Listener {
         if (isOwner || isTeamEliminated) {
 
             if (isTeamEliminated && !isOwner) {
-                MessageUtils.sendMessage(player, "§eВы открыли сундук выбывшей команды ${owningTeam.color}${owningTeam.name}§e!")
+                // MessageUtils.sendMessage(player, "§eВы открыли сундук выбывшей команды ${owningTeam.color}${owningTeam.name}§e!")
             }
 
         } else {

@@ -4,9 +4,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Block
-import org.bukkit.entity.EntityType
 import org.bukkit.entity.Fireball
-import org.bukkit.entity.Player
 import org.bukkit.entity.TNTPrimed
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -18,7 +16,7 @@ import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.metadata.FixedMetadataValue
 import org.bukkit.metadata.MetadataValue
-import org.bukkit.scheduler.BukkitTask // Импорт для явного указания типа task
+import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.arenas.ArenaManager
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.Game
@@ -39,6 +37,7 @@ class ExplosivesListener : Listener {
         event.isCancelled = true
 
         val tntLocation = event.block.location.toCenterLocation().add(0.0, 0.5, 0.0)
+        event.block.world.playSound(tntLocation, org.bukkit.Sound.ENTITY_TNT_PRIMED, 1.0f, 1.0f)
         event.block.type = Material.AIR
 
         event.block.world.spawn(tntLocation, TNTPrimed::class.java).apply {
@@ -79,37 +78,32 @@ class ExplosivesListener : Listener {
         val fireball = player.launchProjectile(Fireball::class.java).apply {
             shooter = player
             yield = 0.0f
-
             setMetadata("EXPLOSION_CREATOR_UUID", FixedMetadataValue(PluginManager.getPlugin(), player.uniqueId.toString()))
             setMetadata("FIREBALL_START_LOC", FixedMetadataValue(PluginManager.getPlugin(), location))
         }
 
         startFireballTracking(fireball)
-
         player.world.playSound(player.location, org.bukkit.Sound.ENTITY_GHAST_SHOOT, 1.0f, 1.0f)
     }
 
     @EventHandler
     fun onProjectileHit(event: ProjectileHitEvent) {
         val fireball = event.entity as? Fireball ?: return
-
         if (!fireball.hasMetadata("EXPLOSION_CREATOR_UUID")) return
 
         val hitLoc = event.hitBlock?.location?.toCenterLocation() ?: event.hitEntity?.location ?: fireball.location
 
-        fireball.world.createExplosion(hitLoc, 3.0f, false, true)
+        fireball.world.createExplosion(hitLoc, 2.0f, false, true)
         fireball.remove()
     }
 
     private fun startFireballTracking(fireball: Fireball) {
         val plugin = PluginManager.getPlugin()
         val maxDistanceSquared = 150.0 * 150.0
-
         var task: BukkitTask? = null
 
         val runnable = Runnable {
             if (task == null) return@Runnable
-
             if (fireball.isDead || !fireball.isValid || !fireball.hasMetadata("FIREBALL_START_LOC")) {
                 task?.cancel()
                 return@Runnable
@@ -127,16 +121,13 @@ class ExplosivesListener : Listener {
         task = Bukkit.getScheduler().runTaskTimer(plugin, runnable, 0L, 5L)
     }
 
-
     @EventHandler
     fun onEntityExplode(event: EntityExplodeEvent) {
         val game = GameManager.getGame(event.entity.world) ?: return
         if (!ArenaManager.isArena(event.entity.world)) return
 
         event.isCancelled = true
-
         val explosionLocation = event.location
-
         val actualPower = event.yield.coerceAtLeast(2.0f)
 
         var sourceTeam: Team? = null
