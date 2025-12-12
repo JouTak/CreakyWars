@@ -21,6 +21,7 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.Game
+import ru.joutak.creakywars.game.Team
 import ru.joutak.creakywars.trading.Trade
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
@@ -69,7 +70,6 @@ object ShopGui : Listener {
         updateInventoryItems(inventory, player, game, category)
 
         player.openInventory(inventory)
-        PluginManager.getPlugin().logger.log(Level.INFO, "[ShopGui] Инвентарь открыт для ${player.name}, категория: $category")
     }
 
     private fun updateInventoryItems(inventory: Inventory, player: Player, game: Game, category: String) {
@@ -81,7 +81,6 @@ object ShopGui : Listener {
             val meta = item.itemMeta!!
             meta.setDisplayName(name)
             meta.persistentDataContainer.set(CATEGORY_KEY, PersistentDataType.STRING, catId)
-            meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
 
             if (catId == category) {
                 meta.lore = listOf("§a§lТекущая вкладка")
@@ -98,8 +97,50 @@ object ShopGui : Listener {
         }
         (36..44).plus(50..53).forEach { inventory.setItem(it, separator) }
 
-        tradesByCategory[category]?.forEachIndexed { index, trade ->
-            if (index < 36) inventory.setItem(index, createTradeItem(trade, game, player))
+        val loadout = game.getPlayerData(player)?.loadout
+        var slotIndex = 0
+
+        tradesByCategory[category]?.forEach { trade ->
+            val tradeResultType = trade.result.type
+            var showTrade = true
+            if (loadout != null) {
+                when {
+                    isArmor(tradeResultType) -> {
+                        val armorType = getArmorType(tradeResultType)
+                        val currentItem = loadout.getStoredArmor(armorType)
+                        val currentTier = currentItem?.type?.let { getArmorMaterialTier(it) } ?: 0
+                        val newTier = getArmorMaterialTier(tradeResultType)
+
+                        showTrade = newTier > currentTier
+                    }
+
+                    isTool(tradeResultType) -> {
+                        val toolType = getToolType(tradeResultType)
+                        val newTier = getToolMaterialTier(tradeResultType)
+
+                        val currentTool = player.inventory.contents
+                            .filterNotNull()
+                            .firstOrNull { getToolType(it.type) == toolType }
+
+                        val currentTier = currentTool?.type?.let { getToolMaterialTier(it) } ?: 0
+
+                        showTrade = newTier > currentTier
+                    }
+
+                    isSword(tradeResultType) -> {
+                        val newTier = getToolMaterialTier(tradeResultType)
+                        val currentSword = loadout.sword
+                        val currentTier = currentSword.type.let { getToolMaterialTier(it) } ?: 0
+
+                        showTrade = newTier > currentTier
+                    }
+                }
+            }
+
+            if (showTrade && slotIndex < 36) {
+                inventory.setItem(slotIndex, createTradeItem(trade, game, player))
+                slotIndex++
+            }
         }
     }
 
@@ -120,26 +161,54 @@ object ShopGui : Listener {
 
         meta.setDisplayName("§e${trade.displayName}")
 
+        val tradeResultType = trade.result.type
+        val resourceType = GameConfig.resourceTypes[trade.cost.first]!!
+        val requiredAmount = trade.cost.second
+        val hasResources = countResources(player, resourceType.material) >= requiredAmount
+
         val lore = mutableListOf<String>().apply {
             add("")
-            GameConfig.resourceTypes[trade.cost.first]?.let { resourceType ->
-                val has = countResources(player, resourceType.material)
-                val need = trade.cost.second
-                val color = if (has >= need) "§a" else "§c"
-                add("§7Цена: $color${need}x ${resourceType.displayName}")
-            }
-            if (team != null && shouldUseTeamColor(trade.result.type)) {
+            val color = if (hasResources) "§a" else "§c"
+            add("§7Цена: $color${requiredAmount}x ${resourceType.displayName}")
+
+            if (team != null && shouldUseTeamColor(tradeResultType)) {
                 add("§7Цвет: ${team.color}${team.name}")
             }
-            if (meta.hasEnchants()) {
+
+            val allEnchants = mutableMapOf<Enchantment, Int>()
+            trade.result.itemMeta?.enchants?.forEach { (enchant, level) ->
+                allEnchants[enchant] = level
+            }
+
+            val isArmorTrade = isArmor(tradeResultType)
+            val isToolTrade = isTool(tradeResultType)
+            val isSwordTrade = isSword(tradeResultType)
+
+            if (team != null) {
+                if (isArmorTrade && team.protectionLevel > 0) {
+                    allEnchants[Enchantment.PROTECTION] = team.protectionLevel
+                }
+                if (isSwordTrade && team.sharpnessLevel > 0) {
+                    allEnchants[Enchantment.SHARPNESS] = team.sharpnessLevel
+                }
+                if (isToolTrade && team.efficiencyLevel > 0) {
+                    allEnchants[Enchantment.EFFICIENCY] = team.efficiencyLevel
+                }
+            }
+
+            if (allEnchants.isNotEmpty()) {
                 add("")
                 add("§dЗачарования:")
-                meta.enchants.forEach { (enchant, level) ->
+                allEnchants.forEach { (enchant, level) ->
                     add("§7- ${getEnchantmentName(enchant)} $level")
                 }
             }
+
             add("")
-            add("§eНажмите, чтобы купить!")
+            when {
+                !hasResources -> add("§cНедостаточно ресурсов!")
+                else -> add("§eНажмите, чтобы купить!")
+            }
         }
         meta.lore = lore
         item.itemMeta = meta
@@ -197,6 +266,37 @@ object ShopGui : Listener {
             val trade = GameConfig.trades.find { it.id == tradeId } ?: return
             val resourceType = GameConfig.resourceTypes[trade.cost.first] ?: return
             val requiredAmount = trade.cost.second
+            val team = game.getTeam(player)
+            val resultItem = createPurchasedItem(trade, team)
+            val playerData = game.getPlayerData(player)
+            val loadout = playerData?.loadout
+            val tradeResultType = trade.result.type
+
+            val isArmorTrade = isArmor(tradeResultType)
+            val isToolTrade = isTool(tradeResultType)
+            val isSwordTrade = isSword(tradeResultType)
+
+            if (loadout != null) {
+                val currentTier = when {
+                    isArmorTrade -> loadout.getStoredArmor(getArmorType(tradeResultType))?.type?.let { getArmorMaterialTier(it) } ?: 0
+                    isToolTrade -> player.inventory.contents.filterNotNull().firstOrNull { getToolType(it.type) == getToolType(tradeResultType) }?.type?.let { getToolMaterialTier(it) } ?: 0
+                    isSwordTrade -> loadout.sword.type.let { getToolMaterialTier(it) } ?: 0
+                    else -> 0
+                }
+                val newTier = when {
+                    isArmorTrade -> getArmorMaterialTier(tradeResultType)
+                    isToolTrade || isSwordTrade -> getToolMaterialTier(tradeResultType)
+                    else -> 0
+                }
+
+                if (newTier <= currentTier && (isArmorTrade || isToolTrade || isSwordTrade)) {
+                    MessageUtils.sendMessage(player, "§cУ вас уже есть предмет такого же или лучшего уровня!")
+                    player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 1f, 1f)
+                    updateInventoryItems(clickedInventory, player, game, currentCategory)
+                    return
+                }
+            }
+
 
             if (countResources(player, resourceType.material) < requiredAmount) {
                 MessageUtils.sendMessage(player, "§cНедостаточно ${resourceType.displayName}!")
@@ -213,14 +313,8 @@ object ShopGui : Listener {
                 return
             }
 
-            val team = game.getTeam(player)
-            val resultItem = createPurchasedItem(trade, team)
-
-            val playerData = game.getPlayerData(player)
-            val loadout = playerData?.loadout
-
             when {
-                isArmor(resultItem.type) && loadout != null -> {
+                isArmorTrade && loadout != null -> {
                     val armorType = getArmorType(resultItem.type)
 
                     loadout.upgradeArmor(armorType, resultItem, silent = false)
@@ -230,8 +324,11 @@ object ShopGui : Listener {
                         loadout.upgradeArmor("boots", bootsItem, silent = true)
                     }
                 }
-                isSword(resultItem.type) && loadout != null -> {
+                isSwordTrade && loadout != null -> {
                     loadout.upgradeSword(resultItem)
+                }
+                isToolTrade && loadout != null -> {
+                    loadout.addOrReplaceTool(resultItem)
                 }
                 else -> {
                     val leftover = player.inventory.addItem(resultItem)
@@ -255,9 +352,7 @@ object ShopGui : Listener {
 
     @EventHandler
     fun onInventoryClose(event: InventoryCloseEvent) {
-        if (openInventories.remove(event.player.uniqueId) != null) {
-            PluginManager.getPlugin().logger.log(Level.INFO, "[ShopGui] Инвентарь закрыт для ${event.player.name}. Удален из списка.")
-        }
+        openInventories.remove(event.player.uniqueId)
     }
 
     @EventHandler
@@ -265,7 +360,7 @@ object ShopGui : Listener {
         openInventories.remove(event.player.uniqueId)
     }
 
-    private fun createPurchasedItem(trade: Trade, team: ru.joutak.creakywars.game.Team?): ItemStack {
+    private fun createPurchasedItem(trade: Trade, team: Team?): ItemStack {
         val item = if (team != null && shouldUseTeamColor(trade.result.type)) {
             convertToTeamColor(trade.result.clone(), team.woolColor)
         } else {
@@ -281,10 +376,8 @@ object ShopGui : Listener {
             item.type.name.endsWith("BOW") -> true
             item.type.name.endsWith("CROSSBOW") -> true
             item.type.name.endsWith("TRIDENT") -> true
-            item.type.name.endsWith("_HELMET") -> true
-            item.type.name.endsWith("_CHESTPLATE") -> true
-            item.type.name.endsWith("_LEGGINGS") -> true
-            item.type.name.endsWith("_BOOTS") -> true
+            isArmor(item.type) -> true
+            item.type == Material.SHEARS -> true
             else -> false
         }
 
@@ -296,19 +389,24 @@ object ShopGui : Listener {
             }
             trade.result.itemMeta?.itemFlags?.forEach { meta.addItemFlags(it) }
 
+            if (team != null) {
+                if (isArmor(item.type) && team.protectionLevel > 0) {
+                    meta.addEnchant(Enchantment.PROTECTION, team.protectionLevel, true)
+                }
+                if (isSword(item.type) && team.sharpnessLevel > 0) {
+                    meta.addEnchant(Enchantment.SHARPNESS, team.sharpnessLevel, true)
+                }
+                if (isTool(item.type) && team.efficiencyLevel > 0) {
+                    meta.addEnchant(Enchantment.EFFICIENCY, team.efficiencyLevel, true)
+                }
+            }
+
             meta.isUnbreakable = true
-            meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE)
 
             if (isArmor(item.type)) {
                 meta.addEnchant(Enchantment.BINDING_CURSE, 1, true)
-                meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
                 @Suppress("DEPRECATION")
                 meta.setDisplayName("${team?.color ?: "§7"}Не снимаемая броня")
-            }
-
-            if (item.type.name.endsWith("_SWORD") || item.type.name.contains("_PICKAXE") ||
-                item.type.name.contains("_AXE") || item.type.name.contains("_BOW")) {
-                meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
             }
 
             item.itemMeta = meta
@@ -398,6 +496,42 @@ object ShopGui : Listener {
 
     private fun isSword(material: Material): Boolean =
         material.name.endsWith("_SWORD")
+
+    private fun isTool(material: Material): Boolean =
+        material.name.endsWith("_PICKAXE") || material.name.endsWith("_AXE") ||
+                material.name.endsWith("_SHOVEL") || material.name.endsWith("_HOE") ||
+                material == Material.SHEARS
+
+    private fun getToolType(material: Material): String = when {
+        material.name.endsWith("_PICKAXE") -> "pickaxe"
+        material.name.endsWith("_AXE") -> "axe"
+        material.name.endsWith("_SHOVEL") -> "shovel"
+        material.name.endsWith("_HOE") -> "hoe"
+        material == Material.SHEARS -> "shears"
+        material.name.endsWith("_SWORD") -> "sword"
+        else -> "unknown"
+    }
+
+    private fun getArmorMaterialTier(material: Material): Int = when {
+        material.name.startsWith("LEATHER_") -> 1
+        material.name.startsWith("CHAINMAIL_") -> 2
+        material.name.startsWith("GOLDEN_") -> 3
+        material.name.startsWith("IRON_") -> 4
+        material.name.startsWith("DIAMOND_") -> 5
+        material.name.startsWith("NETHERITE_") -> 6
+        else -> 0
+    }
+
+    private fun getToolMaterialTier(material: Material): Int = when {
+        material.name.startsWith("WOODEN_") -> 1
+        material.name.startsWith("STONE_") -> 2
+        material.name.startsWith("IRON_") -> 3
+        material.name.startsWith("GOLDEN_") -> 4
+        material.name.startsWith("DIAMOND_") -> 5
+        material.name.startsWith("NETHERITE_") -> 6
+        material == Material.SHEARS -> 7
+        else -> 0
+    }
 
     private fun isBlock(material: Material): Boolean =
         material.isBlock && !isArmor(material) && !isSword(material)

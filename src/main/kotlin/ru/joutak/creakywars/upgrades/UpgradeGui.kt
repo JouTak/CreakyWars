@@ -23,6 +23,8 @@ import ru.joutak.creakywars.utils.PluginManager
 object UpgradeGui : Listener {
 
     private const val TITLE = "§bКомандные улучшения"
+    private const val FINAL_STATE_TEXT = "§aКуплено полностью!"
+    private const val ACTIVE_TRAP_TEXT = "§aЛовушка заряжена!"
 
     init {
         Bukkit.getPluginManager().registerEvents(this, PluginManager.getPlugin())
@@ -55,27 +57,29 @@ object UpgradeGui : Listener {
 
 
     private fun createForgeItem(team: Team): ItemStack {
-        val tier = team.forgeTier + 1
-        val isMax = tier > 4
+        val nextTier = team.forgeTier + 1
+        val costKey = "forge_${nextTier}_cost"
+        val isMax = GameConfig.upgradeSettings[costKey] == null
 
-        val costData = if (!isMax) GameConfig.upgradeSettings["forge_${tier}_cost"] as? GameConfig.UpgradeCost else null
-
-        val mat = Material.FURNACE // Оставил как было
+        val mat = Material.FURNACE
         val item = ItemStack(mat)
         val meta = item.itemMeta!!
 
-        meta.setDisplayName(if (isMax) "§aНебесная кузница (МАКС)" else "§eНебесная кузница $tier")
+        val displayTier = if (isMax) team.forgeTier else nextTier
+
+        meta.setDisplayName(if (isMax) "§aНебесная кузница (МАКС)" else "§eНебесная кузница $displayTier")
         val lore = mutableListOf<String>()
         lore.add("§7Увеличивает скорость спавна")
         lore.add("§7ресурсов на вашей базе.")
         lore.add("")
 
         if (isMax) {
-            lore.add("§aКуплено полностью!")
+            lore.add(FINAL_STATE_TEXT)
             meta.addEnchant(Enchantment.LURE, 1, true)
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
         } else {
-            val resName = GameConfig.resourceTypes[costData!!.currency]?.displayName ?: "Ресурс"
+            val costData = GameConfig.upgradeSettings[costKey] as GameConfig.UpgradeCost
+            val resName = GameConfig.resourceTypes[costData.currency]?.displayName ?: "Ресурс"
             val has = costData.amount
             lore.add("§7Цена: §f${has}x $resName")
             lore.add("§eНажмите для улучшения!")
@@ -87,25 +91,29 @@ object UpgradeGui : Listener {
     }
 
     private fun createProtectionItem(team: Team): ItemStack {
-        val tier = team.protectionLevel + 1
-        val isMax = tier > 3
-
-        val costData = if (!isMax) GameConfig.upgradeSettings["prot_${tier}_cost"] as? GameConfig.UpgradeCost else null
+        val nextTier = team.protectionLevel + 1
+        val costKey = "prot_${nextTier}_cost"
+        val isMax = GameConfig.upgradeSettings[costKey] == null
 
         val item = ItemStack(Material.IRON_CHESTPLATE)
         val meta = item.itemMeta!!
-        meta.setDisplayName(if (isMax) "§aУкрепленная броня (МАКС)" else "§eУкрепленная броня $tier")
+
+        val displayLevelInLore = if (isMax) team.protectionLevel else nextTier
+
+        meta.setDisplayName(if (isMax) "§aУкрепленная броня (МАКС)" else "§eУкрепленная броня $nextTier")
+
         val lore = mutableListOf<String>()
         lore.add("§7Ваша команда получает")
-        lore.add("§7Защиту $tier на всю броню.")
+        lore.add("§7Защиту $displayLevelInLore на всю броню.")
         lore.add("")
 
         if (isMax) {
-            lore.add("§aКуплено полностью!")
-            meta.addEnchant(Enchantment.PROTECTION, 1, true)
+            lore.add(FINAL_STATE_TEXT)
+            meta.addEnchant(Enchantment.PROTECTION, displayLevelInLore, true)
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
         } else {
-            val resName = GameConfig.resourceTypes[costData!!.currency]?.displayName ?: "Ресурс"
+            val costData = GameConfig.upgradeSettings[costKey] as GameConfig.UpgradeCost
+            val resName = GameConfig.resourceTypes[costData.currency]?.displayName ?: "Ресурс"
             lore.add("§7Цена: §f${costData.amount}x $resName")
             lore.add("§eНажмите для улучшения!")
         }
@@ -121,14 +129,14 @@ object UpgradeGui : Listener {
 
         val item = ItemStack(Material.IRON_SWORD)
         val meta = item.itemMeta!!
-        meta.setDisplayName(if (isBought) "§aОстрые клинки (МАКС)" else "§eОстрые клинки")
+        meta.setDisplayName(if (isBought) "§aОстрые клинки (КУПЛЕНО)" else "§eОстрые клинки")
         val lore = mutableListOf<String>()
         lore.add("§7Ваша команда получает")
         lore.add("§7Остроту I на все мечи.")
         lore.add("")
 
         if (isBought) {
-            lore.add("§aКуплено!")
+            lore.add(FINAL_STATE_TEXT)
             meta.addEnchant(Enchantment.SHARPNESS, 1, true)
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
         } else {
@@ -143,21 +151,26 @@ object UpgradeGui : Listener {
     }
 
     private fun createEfficiencyItem(team: Team): ItemStack {
-        val tier = team.efficiencyLevel + 1
-        val isMax = tier > 2
-        val costData = if (!isMax) GameConfig.upgradeSettings["eff_${tier}_cost"] as? GameConfig.UpgradeCost else null
+        val nextTier = team.efficiencyLevel + 1
+        val costKey = "eff_${nextTier}_cost"
+        val isMax = GameConfig.upgradeSettings[costKey] == null
+
+        val costData = if (!isMax) GameConfig.upgradeSettings[costKey] as? GameConfig.UpgradeCost else null
 
         val item = ItemStack(Material.GOLDEN_PICKAXE)
         val meta = item.itemMeta!!
-        meta.setDisplayName(if (isMax) "§aЭффективность (МАКС)" else "§eЭффективность $tier")
+
+        val displayTier = if (isMax) team.efficiencyLevel else nextTier
+
+        meta.setDisplayName(if (isMax) "§aЭффективность (МАКС)" else "§eЭффективность $displayTier")
         val lore = mutableListOf<String>()
         lore.add("§7Ускоряет добычу блоков")
         lore.add("§7для всей команды.")
         lore.add("")
 
         if (isMax) {
-            lore.add("§aКуплено полностью!")
-            meta.addEnchant(Enchantment.EFFICIENCY, 1, true)
+            lore.add(FINAL_STATE_TEXT)
+            meta.addEnchant(Enchantment.EFFICIENCY, displayTier, true)
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
         } else {
             val resName = GameConfig.resourceTypes[costData!!.currency]?.displayName ?: "Ресурс"
@@ -177,14 +190,15 @@ object UpgradeGui : Listener {
 
         val item = ItemStack(Material.LEATHER_BOOTS)
         val meta = item.itemMeta!!
-        meta.setDisplayName(if (isBought) "§aБыстрый респавн (МАКС)" else "§eБыстрый респавн")
+        // Унифицируем отображение (КУПЛЕНО) в названии
+        meta.setDisplayName(if (isBought) "§aБыстрый респавн (КУПЛЕНО)" else "§eБыстрый респавн")
         val lore = mutableListOf<String>()
         lore.add("§7Уменьшает время возрождения")
         lore.add("§7до $time секунд.")
         lore.add("")
 
         if (isBought) {
-            lore.add("§aКуплено!")
+            lore.add(FINAL_STATE_TEXT)
             meta.addEnchant(Enchantment.PROTECTION, 1, true)
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
         } else {
@@ -204,7 +218,7 @@ object UpgradeGui : Listener {
 
         val item = ItemStack(Material.TRIPWIRE_HOOK)
         val meta = item.itemMeta!!
-        meta.setDisplayName(if (isBought) "§cЛовушка заряжена!" else "§eЛовушка")
+        meta.setDisplayName(if (isBought) "§aЛовушка (АКТИВНА)" else "§eЛовушка")
         val lore = mutableListOf<String>()
         lore.add("§7Предупреждает о врагах")
         lore.add("§7рядом с базой.")
@@ -212,7 +226,7 @@ object UpgradeGui : Listener {
         lore.add("")
 
         if (isBought) {
-            lore.add("§cУже активна!")
+            lore.add(ACTIVE_TRAP_TEXT)
             meta.addEnchant(Enchantment.UNBREAKING, 1, true)
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
         } else {
@@ -300,26 +314,30 @@ object UpgradeGui : Listener {
     }
 
     private fun buyForge(player: Player, game: Game, team: Team) {
-        if (team.forgeTier >= 4) return
-        val tier = team.forgeTier + 1
-        val cost = GameConfig.upgradeSettings["forge_${tier}_cost"] as GameConfig.UpgradeCost
-        val mult = GameConfig.upgradeSettings["forge_${tier}_mult"] as Double
+        val nextTier = team.forgeTier + 1
+        val costKey = "forge_${nextTier}_cost"
+        if (GameConfig.upgradeSettings[costKey] == null) return
+
+        val cost = GameConfig.upgradeSettings[costKey] as GameConfig.UpgradeCost
+        val mult = GameConfig.upgradeSettings["forge_${nextTier}_mult"] as Double
 
         if (attemptBuy(player, cost)) {
-            team.forgeTier = tier
+            team.forgeTier = nextTier
             ResourceSpawner.updateTeamMultiplier(game, team, mult)
-            notifyTeam(game, team, "Небесная кузница $tier")
+            notifyTeam(game, team, "Небесная кузница $nextTier")
         }
     }
 
     private fun buyProtection(player: Player, game: Game, team: Team) {
-        if (team.protectionLevel >= 3) return
-        val tier = team.protectionLevel + 1
-        val cost = GameConfig.upgradeSettings["prot_${tier}_cost"] as GameConfig.UpgradeCost
+        val nextTier = team.protectionLevel + 1
+        val costKey = "prot_${nextTier}_cost"
+        if (GameConfig.upgradeSettings[costKey] == null) return
+
+        val cost = GameConfig.upgradeSettings[costKey] as GameConfig.UpgradeCost
 
         if (attemptBuy(player, cost)) {
-            team.protectionLevel = tier
-            notifyTeam(game, team, "Укрепленная броня $tier")
+            team.protectionLevel = nextTier
+            notifyTeam(game, team, "Укрепленная броня $nextTier")
         }
     }
 
@@ -334,13 +352,15 @@ object UpgradeGui : Listener {
     }
 
     private fun buyEfficiency(player: Player, game: Game, team: Team) {
-        if (team.efficiencyLevel >= 2) return
-        val tier = team.efficiencyLevel + 1
-        val cost = GameConfig.upgradeSettings["eff_${tier}_cost"] as GameConfig.UpgradeCost
+        val nextTier = team.efficiencyLevel + 1
+        val costKey = "eff_${nextTier}_cost"
+        if (GameConfig.upgradeSettings[costKey] == null) return
+
+        val cost = GameConfig.upgradeSettings[costKey] as GameConfig.UpgradeCost
 
         if (attemptBuy(player, cost)) {
-            team.efficiencyLevel = tier
-            notifyTeam(game, team, "Эффективность $tier")
+            team.efficiencyLevel = nextTier
+            notifyTeam(game, team, "Эффективность $nextTier")
         }
     }
 

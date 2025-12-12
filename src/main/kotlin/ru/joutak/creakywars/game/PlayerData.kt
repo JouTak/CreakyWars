@@ -10,7 +10,7 @@ data class PlayerData(
     var deaths: Int = 0,
     var finalKills: Int = 0,
     var resourcesCollected: Int = 0,
-    var loadout: PlayerLoadout? = null // НОВОЕ
+    var loadout: PlayerLoadout? = null
 ) {
     fun addKill() {
         kills++
@@ -23,7 +23,7 @@ data class PlayerData(
     fun addFinalKill() {
         finalKills++
     }
-    
+
     fun reset() {
         kills = 0
         deaths = 0

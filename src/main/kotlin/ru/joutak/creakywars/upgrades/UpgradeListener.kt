@@ -15,6 +15,7 @@ import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
+import org.bukkit.GameMode
 
 @Suppress("DEPRECATION")
 class UpgradeListener : Listener {
@@ -50,6 +51,8 @@ class UpgradeListener : Listener {
     fun onMove(event: PlayerMoveEvent) {
         val player = event.player
         val game = GameManager.getGame(player) ?: return
+
+        if (player.gameMode != GameMode.SURVIVAL) return
 
         if (event.from.blockX == event.to?.blockX &&
             event.from.blockZ == event.to?.blockZ &&

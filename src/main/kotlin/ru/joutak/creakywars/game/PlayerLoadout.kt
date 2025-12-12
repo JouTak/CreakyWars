@@ -17,9 +17,18 @@ data class PlayerLoadout(
     private var chestplate: ItemStack = makeUnbreakableArmor(createLeatherArmor(Material.LEATHER_CHESTPLATE))
     private var leggings: ItemStack = makeUnbreakableArmor(createLeatherArmor(Material.LEATHER_LEGGINGS))
     private var boots: ItemStack = makeUnbreakableArmor(createLeatherArmor(Material.LEATHER_BOOTS))
-    private var sword: ItemStack = makeUnbreakable(ItemStack(Material.WOODEN_SWORD))
+    var sword: ItemStack = makeUnbreakable(ItemStack(Material.WOODEN_SWORD))
     private val permanentArmorUpgrades = mutableSetOf<String>()
 
+    fun getStoredArmor(type: String): ItemStack? {
+        return when (type.lowercase()) {
+            "helmet" -> helmet
+            "chestplate" -> chestplate
+            "leggings" -> leggings
+            "boots" -> boots
+            else -> null
+        }
+    }
 
     private fun createLeatherArmor(material: Material): ItemStack {
         val item = ItemStack(material)
@@ -129,6 +138,29 @@ data class PlayerLoadout(
         MessageUtils.sendMessage(player, "§aМеч улучшен!")
     }
 
+    fun addOrReplaceTool(tool: ItemStack) {
+        val item = makeUnbreakable(tool.clone())
+        applyTeamEnchants(item)
+
+        val toolType = getToolType(item.type)
+
+        for (i in 0 until player.inventory.size) {
+            val existingItem = player.inventory.getItem(i)
+            if (existingItem != null && getToolType(existingItem.type) == toolType) {
+                player.inventory.setItem(i, item)
+                return
+            }
+        }
+
+        val leftover = player.inventory.addItem(item)
+        if (leftover.isNotEmpty()) {
+            leftover.values.forEach {
+                player.world.dropItemNaturally(player.location, it)
+            }
+            MessageUtils.sendMessage(player, "§eКупленный инструмент выпал на землю!")
+        }
+    }
+
     fun upgradeArmor(armorType: String, item: ItemStack, silent: Boolean = false) {
         val upgradedItem = makeUnbreakableArmor(item.clone())
         applyTeamEnchants(upgradedItem)
@@ -168,11 +200,6 @@ data class PlayerLoadout(
         }
     }
 
-    fun giveUnbreakableTool(tool: ItemStack) {
-        val item = makeUnbreakable(tool.clone())
-        applyTeamEnchants(item)
-        player.inventory.addItem(item)
-    }
 
     fun restoreAfterDeath() {
         player.inventory.clear()
@@ -205,7 +232,17 @@ data class PlayerLoadout(
 
     private fun isTool(material: Material): Boolean =
         material.name.endsWith("_PICKAXE") || material.name.endsWith("_AXE") ||
-                material.name.endsWith("_SHOVEL") || material == Material.SHEARS
+                material.name.endsWith("_SHOVEL") || material.name.endsWith("_HOE") ||
+                material == Material.SHEARS
+
+    private fun getToolType(material: Material): String = when {
+        material.name.endsWith("_PICKAXE") -> "pickaxe"
+        material.name.endsWith("_AXE") -> "axe"
+        material.name.endsWith("_SHOVEL") -> "shovel"
+        material.name.endsWith("_HOE") -> "hoe"
+        material == Material.SHEARS -> "shears"
+        else -> "unknown"
+    }
 
     private fun getArmorName(armorType: String): String {
         return when (armorType.lowercase()) {
