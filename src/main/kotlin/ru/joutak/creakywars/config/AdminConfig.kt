@@ -52,7 +52,7 @@ object AdminConfig {
     fun reload() {
         config = YamlConfiguration.loadConfiguration(file)
         load()
-        ArenaManager.setTemplate()
+        ArenaManager.loadTemplate()
     }
 
     fun getMinPlayersToStart(): Int {

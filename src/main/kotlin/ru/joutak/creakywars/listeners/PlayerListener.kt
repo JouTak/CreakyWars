@@ -1,20 +1,17 @@
 package ru.joutak.creakywars.listeners
 
 import org.bukkit.GameMode
-import org.bukkit.Material
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.*
 import ru.joutak.creakywars.game.GameManager
-import ru.joutak.creakywars.queue.QueueManager
 import ru.joutak.creakywars.utils.MessageUtils
+import ru.joutak.minigames.managers.MatchmakingManager
 
-@Suppress("DEPRECATION")
 class PlayerListener : Listener {
 
-    @Suppress("DEPRECATION")
     @EventHandler
     fun onPlayerJoin(event: PlayerJoinEvent) {
         val player = event.player
@@ -27,15 +24,15 @@ class PlayerListener : Listener {
         event.joinMessage = "§e${player.name} §aприсоединился к серверу!"
     }
 
-    @Suppress("DEPRECATION")
     @EventHandler
     fun onPlayerQuit(event: PlayerQuitEvent) {
         val player = event.player
-        QueueManager.removePlayer(player)
+
+        MatchmakingManager.removePlayer(player)
 
         val game = GameManager.getGame(player)
         if (game != null) {
-            GameManager.removePlayerFromGame(player)
+            game.removePlayer(player)
         }
 
         event.quitMessage = "§e${player.name} §cпокинул сервер!"
@@ -55,6 +52,7 @@ class PlayerListener : Listener {
         val type = item.type.name
 
         val isForbidden = type.endsWith("_SWORD") ||
+                type.endsWith("_PICKAXE") ||
                 type.endsWith("_AXE") ||
                 type.endsWith("_SHOVEL") ||
                 type.endsWith("_HOE") ||
@@ -83,11 +81,9 @@ class PlayerListener : Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     fun onPlayerDeath(event: PlayerDeathEvent) {
         val player = event.entity
-
         event.deathMessage = null
 
         val game = GameManager.getGame(player) ?: return
-
         val killer = player.killer
 
         game.handlePlayerDeath(player, killer)
@@ -100,7 +96,7 @@ class PlayerListener : Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onPlayerRespawn(event: PlayerRespawnEvent) {
         val player = event.player
-        val game = GameManager.getGame(player) ?: return
+        GameManager.getGame(player) ?: return
         event.respawnLocation = player.location
     }
 }
