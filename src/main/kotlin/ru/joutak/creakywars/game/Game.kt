@@ -18,6 +18,7 @@ import ru.joutak.creakywars.resources.ResourceSpawner
 import ru.joutak.creakywars.trading.TraderManager
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
+import ru.joutak.minigames.managers.MatchmakingManager
 import java.util.UUID
 
 @Suppress("DEPRECATION")
@@ -555,7 +556,10 @@ class Game(
     }
 
     private fun cleanup() {
-        players.forEach { player ->
+        // Snapshot players before we clear internal maps.
+        val playersSnapshot = players.toList()
+
+        playersSnapshot.forEach { player ->
             teamScoreboard.removePlayer(player)
             player.teleport(Bukkit.getWorlds().first().spawnLocation)
             player.gameMode = GameMode.ADVENTURE
@@ -565,6 +569,12 @@ class Game(
             player.saturation = 20f
             player.fireTicks = 0
             player.gameMode = GameMode.ADVENTURE
+        }
+
+        // Mark players as no longer participating in the running match (API side),
+        // so they can queue again and lobby items can be restored.
+        playersSnapshot.forEach { player ->
+            MatchmakingManager.removePlayer(player)
         }
 
         phaseBossBar.remove()
