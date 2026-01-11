@@ -28,7 +28,7 @@ dependencies {
 
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
-    implementation("ru.joutak:minigamesapi:1.0.0-61")
+    implementation("ru.joutak:minigamesapi:2.2.1-67")
 }
 
 kotlin {
