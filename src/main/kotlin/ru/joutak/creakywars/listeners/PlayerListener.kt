@@ -28,7 +28,10 @@ class PlayerListener : Listener {
     fun onPlayerQuit(event: PlayerQuitEvent) {
         val player = event.player
 
-        MatchmakingManager.removePlayer(player)
+        try {
+            MatchmakingManager.removePlayer(player)
+        } catch (_: Exception) {
+        }
 
         val game = GameManager.getGame(player)
         if (game != null) {
@@ -51,7 +54,10 @@ class PlayerListener : Listener {
     fun onPlayerKick(event: PlayerKickEvent) {
         val player = event.player
 
-        MatchmakingManager.removePlayer(player)
+        try {
+            MatchmakingManager.removePlayer(player)
+        } catch (_: Exception) {
+        }
 
         val game = GameManager.getGame(player)
         if (game != null) {

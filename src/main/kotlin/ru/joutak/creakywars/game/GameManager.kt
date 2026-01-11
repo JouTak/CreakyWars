@@ -4,7 +4,6 @@ import org.bukkit.Bukkit
 import org.bukkit.GameMode
 import org.bukkit.World
 import org.bukkit.entity.Player
-import ru.joutak.creakywars.arenas.Arena
 import ru.joutak.creakywars.arenas.ArenaManager
 import ru.joutak.creakywars.arenas.ArenaState
 import ru.joutak.creakywars.utils.PluginManager
@@ -12,7 +11,7 @@ import ru.joutak.minigames.domain.GameInstance
 import ru.joutak.minigames.managers.MatchmakingManager
 
 object GameManager {
-    private val activeGames = mutableMapOf<Arena, Game>()
+    private val activeGames = mutableMapOf<Int, Game>()
 
     fun init() {}
 
@@ -27,7 +26,7 @@ object GameManager {
 
         val game = Game(arena, cwTeams)
         arena.game = game
-        activeGames[arena] = game
+        activeGames[arena.id] = game
 
         // Snapshot waiting teams and move players into the game.
         // IMPORTANT: do NOT call MatchmakingManager.removePlayer() here – it would remove them from
@@ -53,7 +52,7 @@ object GameManager {
         }
 
         PluginManager.getLogger().info("Запуск игры на карте $mapName (ID арены: ${arena.id})")
-        game.startCountdown()
+        game.startFromMatchmaking()
     }
 
     fun getGame(player: Player): Game? = activeGames.values.firstOrNull { it.players.contains(player) }
@@ -62,7 +61,7 @@ object GameManager {
         return activeGames.values.firstOrNull { it.arena.world.name == world.name }
     }
 
-    fun getGameById(arenaId: Int): Game? = activeGames.values.firstOrNull { it.arena.id == arenaId }
+    fun getGameById(arenaId: Int): Game? = activeGames[arenaId]
 
     fun getSpectatingGame(player: Player): Game? = activeGames.values.firstOrNull { it.isSpectator(player.uniqueId) }
 
@@ -71,7 +70,7 @@ object GameManager {
     fun getActiveGames(): List<Game> = activeGames.values.toList()
 
     fun onGameEnd(game: Game) {
-        activeGames.remove(game.arena)
+        activeGames.remove(game.arena.id)
         ArenaManager.deleteArena(game.arena)
     }
 

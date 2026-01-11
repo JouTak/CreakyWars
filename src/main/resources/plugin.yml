@@ -11,6 +11,7 @@ depend: [Multiverse-Core]
 commands:
   creakywars:
     description: "CreakyWars admin utilities"
+    aliases: [cw]
     usage: "/creakywars help"
 
 permissions:

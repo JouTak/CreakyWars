@@ -35,6 +35,8 @@ class Game(
     private var gameStartTime = 0L
     private var gameTask: BukkitTask? = null
     private var startingTask: BukkitTask? = null
+    private var cleanupTask: BukkitTask? = null
+    private var cleanupStarted = false
     private var countdown = 10
     private val isDebugMode = AdminConfig.debugMode
 
@@ -268,7 +270,6 @@ class Game(
             }
 
             if (countdown <= 5 || countdown % 10 == 0) {
-                broadcastMessage("§eИгра начнется через §c$countdown §eсекунд!")
                 getAudiencePlayers().forEach {
                     it.playSound(it.location, Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f)
                 }
@@ -276,6 +277,20 @@ class Game(
 
             countdown--
         }, 0L, 20L)
+    }
+
+    fun startFromMatchmaking() {
+        if (arena.state == ArenaState.IN_GAME) return
+        if (arena.state == ArenaState.ENDING || arena.state == ArenaState.RESETTING) return
+
+        try {
+            startingTask?.cancel()
+        } catch (_: Exception) {
+        }
+        startingTask = null
+        countdown = 0
+
+        startGame()
     }
 
     fun cancelCountdown() {
@@ -693,19 +708,55 @@ class Game(
         }
     }
 
-    private fun endGame(winnerTeam: Team?) {
-        arena.state = ArenaState.ENDING
-        gameTask?.cancel()
 
-        respawnTimers.values.forEach { it.cancel() }
+    private fun endGame(winnerTeam: Team?) {
+        // Allow re-enter: if something went wrong with scheduled cleanup, we can reschedule it.
+        if (arena.state == ArenaState.ENDING) {
+            cleanupTask?.cancel()
+            cleanupTask = null
+        }
+
+        arena.state = ArenaState.ENDING
+
+        try {
+            startingTask?.cancel()
+        } catch (_: Exception) {
+        }
+        startingTask = null
+
+        try {
+            gameTask?.cancel()
+        } catch (_: Exception) {
+        }
+        gameTask = null
+
+        respawnTimers.values.toList().forEach {
+            try {
+                it.cancel()
+            } catch (_: Exception) {
+            }
+        }
         respawnTimers.clear()
 
-        dayNightCycle.stop()
+        try {
+            dayNightCycle.stop()
+        } catch (_: Exception) {
+        }
 
-        ResourceSpawner.stopSpawning(this)
-        TraderManager.removeTraders(this)
+        try {
+            ResourceSpawner.stopSpawning(this)
+        } catch (_: Exception) {
+        }
 
-        disableListeners()
+        try {
+            TraderManager.removeTraders(this)
+        } catch (_: Exception) {
+        }
+
+        try {
+            disableListeners()
+        } catch (_: Exception) {
+        }
 
         if (winnerTeam != null) {
             broadcastTitle("§6Победа!", "§e${winnerTeam.color}${winnerTeam.name}")
@@ -715,7 +766,10 @@ class Game(
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
 
             winnerTeam.getOnlinePlayers().forEach { player ->
-                player.playSound(player.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f)
+                try {
+                    player.playSound(player.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f)
+                } catch (_: Exception) {
+                }
             }
         } else {
             broadcastTitle("§eНичья!", "§7Никто не победил")
@@ -723,7 +777,8 @@ class Game(
             displayStats()
         }
 
-        Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
+        // Ensure the game always proceeds to full cleanup and removal from GameManager.
+        cleanupTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
             cleanup()
         }, 200L)
     }
@@ -746,46 +801,91 @@ class Game(
         }
     }
 
+
     private fun cleanup() {
+        if (cleanupStarted) return
+        cleanupStarted = true
+        cleanupTask = null
+
+        // Expose to /creakywars games that we're actually cleaning up.
+        arena.state = ArenaState.RESETTING
+
         // Snapshot players before we clear internal maps.
         val playersSnapshot = players.toList()
         val spectatorsSnapshot = spectatorsOnline.toList()
 
-        // Restore / eject spectators first (their backups may depend on current world state).
-        spectatorsSnapshot.forEach { spectator ->
+        // Always attempt to remove the game from GameManager even if some cleanup step fails.
+        try {
+            // Restore / eject spectators first (their backups may depend on current world state).
+            spectatorsSnapshot.forEach { spectator ->
+                try {
+                    removeSpectator(spectator, silent = true, forceLobby = true)
+                } catch (_: Exception) {
+                }
+            }
+
+            val lobbyWorld = Bukkit.getWorlds().firstOrNull()
+            val lobbySpawn = lobbyWorld?.spawnLocation
+
+            playersSnapshot.forEach { player ->
+                try {
+                    teamScoreboard.removePlayer(player)
+                } catch (_: Exception) {
+                }
+
+                try {
+                    if (lobbySpawn != null) {
+                        player.teleport(lobbySpawn)
+                    }
+                } catch (_: Exception) {
+                }
+
+                try {
+                    player.gameMode = GameMode.ADVENTURE
+                    player.inventory.clear()
+                    player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
+                    player.health = 20.0
+                    player.foodLevel = 20
+                    player.saturation = 20f
+                    player.fireTicks = 0
+                } catch (_: Exception) {
+                }
+            }
+
+            // Mark players as no longer participating in the running match (API side),
+            // so they can queue again and lobby items can be restored.
+            playersSnapshot.forEach { player ->
+                try {
+                    MatchmakingManager.removePlayer(player)
+                } catch (_: Exception) {
+                }
+            }
+
             try {
-                removeSpectator(spectator, silent = true, forceLobby = true)
+                phaseBossBar.remove()
+            } catch (_: Exception) {
+            }
+
+            try {
+                CoreManager.clearCores(this)
+            } catch (_: Exception) {
+            }
+
+            try {
+                disableListeners()
+            } catch (_: Exception) {
+            }
+
+            playerData.clear()
+            spectators.clear()
+            spectatorBackups.clear()
+
+        } finally {
+            try {
+                GameManager.onGameEnd(this)
             } catch (_: Exception) {
             }
         }
-
-        playersSnapshot.forEach { player ->
-            teamScoreboard.removePlayer(player)
-            player.teleport(Bukkit.getWorlds().first().spawnLocation)
-            player.gameMode = GameMode.ADVENTURE
-            player.inventory.clear()
-            player.health = 20.0
-            player.foodLevel = 20
-            player.saturation = 20f
-            player.fireTicks = 0
-            player.gameMode = GameMode.ADVENTURE
-        }
-
-        // Mark players as no longer participating in the running match (API side),
-        // so they can queue again and lobby items can be restored.
-        playersSnapshot.forEach { player ->
-            MatchmakingManager.removePlayer(player)
-        }
-
-        phaseBossBar.remove()
-        CoreManager.clearCores(this)
-
-        playerData.clear()
-
-        spectators.clear()
-        spectatorBackups.clear()
-
-        GameManager.onGameEnd(this)
     }
 
     fun forceEnd() {
