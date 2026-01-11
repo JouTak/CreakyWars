@@ -1,44 +1,74 @@
 phases:
   phase1:
     name: "Фаза 1: Подготовка"
-    duration: 600  # in seconds
+    # Legacy (seconds). Used only if end-at-tick is not provided.
+    duration: 600
+
+    # New: absolute server ticks from game start when the phase should end.
+    # 6000 ticks ~= 5 minutes (at 20 TPS). In this mode phases can be aligned with DayNightCycle.
+    end-at-tick: 6000
+
     resource-multiplier: 1.0
     respawn-enabled: true
     border-shrink: false
     border-shrink-speed: 0.0
     border-final-size: 261.0
+
+    creaking-speed-amplifier: 0
+    glow-players: false
+
     start-message: "Игра началась! Собирайте ресурсы и защищайте свое ядро!"
     end-message: "Фаза 1 завершена!"
 
   phase2:
     name: "Фаза 2: Ускорение"
     duration: 600
+    end-at-tick: 12000
+
     resource-multiplier: 1.5
     respawn-enabled: true
     border-shrink: false
     border-shrink-speed: 0.0
     border-final-size: 261.0
+
+    creaking-speed-amplifier: 0
+    glow-players: false
+
     start-message: "§6§lФАЗА 2! §eРесурсы спавнятся в 1.5 раза быстрее!"
     end-message: "Фаза 2 завершена!"
 
   phase3:
-    name: "Фаза 3: Хардкор"
+    name: "Фаза 3: Усиление"
     duration: 600
+    # Two full day-night cycles after phase2 ends (default DayNightCycle day=6000, night=6000):
+    end-at-tick: 36000
+
     resource-multiplier: 2.0
     respawn-enabled: false
     border-shrink: false
     border-shrink-speed: 0.0
     border-final-size: 261.0
-    start-message: "§c§lФАЗА 3! §eВозрождение отключено!"
+
+    # SPEED II on Creakings
+    creaking-speed-amplifier: 1
+    glow-players: false
+
+    start-message: "§c§lФАЗА 3! §eРеспавн отключён, скрипуны усилены!"
     end-message: "Начинается финал!"
 
   phase4:
     name: "Фаза 4: Финал"
     duration: 600
+    end-at-tick: 999999
+
     resource-multiplier: 2.0
     respawn-enabled: false
     border-shrink: true
     border-shrink-speed: 0.3
     border-final-size: 71.0
+
+    creaking-speed-amplifier: 1
+    glow-players: true
+
     start-message: "§4§lФИНАЛ! §eГраница мира сужается!"
     end-message: "Игра завершена!"

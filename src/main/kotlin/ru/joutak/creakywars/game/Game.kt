@@ -8,6 +8,7 @@ import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.potion.PotionEffect
+import org.bukkit.potion.PotionEffectType
 import org.bukkit.event.HandlerList
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.arenas.Arena
@@ -31,6 +32,8 @@ class Game(
 ) {
     private val playerData = mutableMapOf<UUID, PlayerData>()
     private var currentPhaseIndex = 0
+    private var gameTick = 0L
+    private var phaseStartTick = 0L
     private var phaseStartTime = 0L
     private var gameStartTime = 0L
     private var gameTask: BukkitTask? = null
@@ -105,17 +108,53 @@ class Game(
         }
     }
 
+
+    fun getCurrentCreakingSpeedAmplifier(): Int {
+        if (arena.state != ArenaState.IN_GAME) return 0
+        if (currentPhaseIndex < 0 || currentPhaseIndex >= ScenarioConfig.phases.size) return 0
+        return ScenarioConfig.phases[currentPhaseIndex].creakingSpeedAmplifier.coerceIn(0, 10)
+    }
+
     fun getRemainingPhaseSeconds(): Long? {
         if (arena.state != ArenaState.IN_GAME) return null
         if (currentPhaseIndex >= ScenarioConfig.phases.size) return null
         val phase = ScenarioConfig.phases[currentPhaseIndex]
-        val elapsed = (System.currentTimeMillis() - phaseStartTime) / 1000
-        return (phase.durationSeconds - elapsed).coerceAtLeast(0)
+
+        val remainingTicks = getRemainingPhaseTicks(phase)
+        return (remainingTicks / 20L).coerceAtLeast(0L)
     }
 
     fun getCountdownSeconds(): Int? {
         if (arena.state != ArenaState.STARTING) return null
         return countdown.coerceAtLeast(0)
+    }
+
+
+    private fun getRemainingPhaseTicks(phase: GamePhase): Long {
+        val endAt = phase.endAtTick
+
+        return if (endAt != null) {
+            (endAt - gameTick).coerceAtLeast(0L)
+        } else {
+            val totalTicks = (phase.durationSeconds * 20L).coerceAtLeast(0L)
+            val elapsedTicks = (gameTick - phaseStartTick).coerceAtLeast(0L)
+            (totalTicks - elapsedTicks).coerceAtLeast(0L)
+        }
+    }
+
+    private fun setPlayersGlowing(enabled: Boolean) {
+        players.toList().forEach { player ->
+            try {
+                if (enabled) {
+                    player.addPotionEffect(
+                        PotionEffect(PotionEffectType.GLOWING, Int.MAX_VALUE, 0, false, false)
+                    )
+                } else {
+                    player.removePotionEffect(PotionEffectType.GLOWING)
+                }
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun adminStartNow(): Boolean {
@@ -276,7 +315,7 @@ class Game(
             }
 
             countdown--
-        }, 0L, 20L)
+        }, 0L, 1L)
     }
 
     fun startFromMatchmaking() {
@@ -305,6 +344,8 @@ class Game(
         arena.state = ArenaState.IN_GAME
         gameStartTime = System.currentTimeMillis()
         phaseStartTime = gameStartTime
+        gameTick = 0L
+        phaseStartTick = 0L
 
         val activeTeams = teams.filter { it.players.isNotEmpty() }
 
@@ -351,7 +392,7 @@ class Game(
 
         gameTask = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
             tick()
-        }, 0L, 20L)
+        }, 0L, 1L)
 
         broadcastTitle("§6Игра началась!", "§eУдачи!")
         broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
@@ -390,16 +431,33 @@ class Game(
     }
 
     private fun tick() {
-        val currentTime = System.currentTimeMillis()
-        val timeSincePhaseStart = (currentTime - phaseStartTime) / 1000
+        gameTick++
 
         if (currentPhaseIndex < ScenarioConfig.phases.size) {
             val currentPhase = ScenarioConfig.phases[currentPhaseIndex]
 
-            val remainingTime = currentPhase.durationSeconds - timeSincePhaseStart
-            phaseBossBar.updateProgress(remainingTime, currentPhase.durationSeconds)
+            val endAt = currentPhase.endAtTick
 
-            if (timeSincePhaseStart >= currentPhase.durationSeconds) {
+            val totalTicks: Long
+            val remainingTicks: Long
+            val phaseFinished: Boolean
+
+            if (endAt != null) {
+                totalTicks = (endAt - phaseStartTick).coerceAtLeast(1L)
+                remainingTicks = (endAt - gameTick).coerceAtLeast(0L)
+                phaseFinished = gameTick >= endAt
+            } else {
+                totalTicks = (currentPhase.durationSeconds * 20L).coerceAtLeast(1L)
+                val elapsedTicks = (gameTick - phaseStartTick).coerceAtLeast(0L)
+                remainingTicks = (totalTicks - elapsedTicks).coerceAtLeast(0L)
+                phaseFinished = elapsedTicks >= totalTicks
+            }
+
+            if (gameTick % 10L == 0L || phaseFinished) {
+                phaseBossBar.updateProgress(remainingTicks, totalTicks)
+            }
+
+            if (phaseFinished) {
                 endPhase(currentPhaseIndex)
 
                 if (currentPhaseIndex + 1 < ScenarioConfig.phases.size) {
@@ -409,7 +467,7 @@ class Game(
                 }
             }
 
-            if (currentPhase.borderShrink) {
+            if (currentPhase.borderShrink && gameTick % 20L == 0L) {
                 val border = arena.world.worldBorder
                 if (border.size > currentPhase.borderFinalSize) {
                     border.size = maxOf(
@@ -420,18 +478,31 @@ class Game(
             }
         }
 
-        checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
+        if (gameTick % 20L == 0L) {
+            checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
+        }
     }
 
     private fun startPhase(phaseIndex: Int) {
         currentPhaseIndex = phaseIndex
         phaseStartTime = System.currentTimeMillis()
+        phaseStartTick = gameTick
 
         val phase = ScenarioConfig.phases[phaseIndex]
 
         ResourceSpawner.setMultiplier(this, phase.resourceMultiplier)
 
         phaseBossBar.create(phaseIndex)
+
+        setPlayersGlowing(false)
+        if (phase.glowPlayers) {
+            setPlayersGlowing(true)
+        }
+
+        try {
+            dayNightCycle.updateCreakingPhaseBuffs()
+        } catch (_: Exception) {
+        }
 
         if (!phase.respawnEnabled) {
             val teamsToDestroy = teams.filter { it.players.isNotEmpty() && !it.coreDestroyed }
@@ -643,7 +714,7 @@ class Game(
 
             player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_PLING, 0.5f, 1f)
             remainingSeconds--
-        }, 0L, 20L)
+        }, 0L, 1L)
 
         respawnTimers[player.uniqueId] = timerTask
     }

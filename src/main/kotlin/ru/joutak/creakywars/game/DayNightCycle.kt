@@ -373,7 +373,7 @@ class DayNightCycle(private val game: Game) {
                 entity.setGravity(true)
 
                 entity.addPotionEffect(
-                    PotionEffect(PotionEffectType.SPEED, Int.MAX_VALUE, 0, false, false)
+                    PotionEffect(PotionEffectType.SPEED, Int.MAX_VALUE, game.getCurrentCreakingSpeedAmplifier(), false, false)
                 )
                 entity.addPotionEffect(
                     PotionEffect(PotionEffectType.STRENGTH, Int.MAX_VALUE, 0, false, false)
@@ -384,9 +384,27 @@ class DayNightCycle(private val game: Game) {
         }
 
         if (creakings.isNotEmpty()) {
+            updateCreakingPhaseBuffs()
             startCreakingRangeCheck()
         }
     }
+
+    fun updateCreakingPhaseBuffs() {
+        val amp = game.getCurrentCreakingSpeedAmplifier()
+
+        creakings.removeIf { !it.isValid }
+
+        creakings.forEach { entity ->
+            try {
+                entity.removePotionEffect(PotionEffectType.SPEED)
+                entity.addPotionEffect(
+                    PotionEffect(PotionEffectType.SPEED, Int.MAX_VALUE, amp, false, false)
+                )
+            } catch (_: Exception) {
+            }
+        }
+    }
+
 
     private fun despawnAllCreakings() {
         creakings.forEach { entity ->

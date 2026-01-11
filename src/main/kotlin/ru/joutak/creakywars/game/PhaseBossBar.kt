@@ -30,8 +30,15 @@ class PhaseBossBar(private val game: Game) {
         }
     }
 
-    fun updateProgress(remainingTime: Long, totalTime: Long) {
-        val progress = remainingTime.toDouble() / totalTime.toDouble()
+    /**
+     * [remaining] and [total] are in the same units (ticks or seconds) – only ratio matters.
+     */
+    fun updateProgress(remaining: Long, total: Long) {
+        if (total <= 0L) {
+            bossBar?.progress = 0.0
+            return
+        }
+        val progress = remaining.toDouble() / total.toDouble()
         bossBar?.progress = progress.coerceIn(0.0, 1.0)
     }
 
