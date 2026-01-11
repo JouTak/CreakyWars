@@ -33,9 +33,38 @@ class PlayerListener : Listener {
         val game = GameManager.getGame(player)
         if (game != null) {
             game.removePlayer(player)
+        } else {
+            // Admin spectate mode: restore and clean up.
+            val spectateGame = GameManager.getSpectatingGame(player)
+            if (spectateGame != null) {
+                try {
+                    spectateGame.removeSpectator(player, silent = true, forceLobby = true)
+                } catch (_: Exception) {
+                }
+            }
         }
 
         event.quitMessage = "§e${player.name} §cпокинул сервер!"
+    }
+
+    @EventHandler
+    fun onPlayerKick(event: PlayerKickEvent) {
+        val player = event.player
+
+        MatchmakingManager.removePlayer(player)
+
+        val game = GameManager.getGame(player)
+        if (game != null) {
+            game.removePlayer(player)
+        } else {
+            val spectateGame = GameManager.getSpectatingGame(player)
+            if (spectateGame != null) {
+                try {
+                    spectateGame.removeSpectator(player, silent = true, forceLobby = true)
+                } catch (_: Exception) {
+                }
+            }
+        }
     }
 
     @EventHandler

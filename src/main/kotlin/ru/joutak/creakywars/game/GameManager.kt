@@ -62,6 +62,10 @@ object GameManager {
         return activeGames.values.firstOrNull { it.arena.world.name == world.name }
     }
 
+    fun getGameById(arenaId: Int): Game? = activeGames.values.firstOrNull { it.arena.id == arenaId }
+
+    fun getSpectatingGame(player: Player): Game? = activeGames.values.firstOrNull { it.isSpectator(player.uniqueId) }
+
     fun isInGame(player: Player): Boolean = getGame(player) != null
 
     fun getActiveGames(): List<Game> = activeGames.values.toList()
@@ -77,6 +81,15 @@ object GameManager {
         // otherwise they can get stuck and won't be able to queue again.
         val mainWorld = Bukkit.getWorlds().firstOrNull()
         activeGames.values.toList().forEach { game ->
+            // Restore spectators (admins/referees) back to lobby safely.
+            val spectatorsSnapshot = game.getSpectators().toList()
+            spectatorsSnapshot.forEach { spectator ->
+                try {
+                    game.removeSpectator(spectator, silent = true, forceLobby = true)
+                } catch (_: Exception) {
+                }
+            }
+
             val playersSnapshot = game.players.toList()
             playersSnapshot.forEach { player ->
                 try {

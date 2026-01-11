@@ -1,0 +1,91 @@
+# Splatoon plugin config
+
+lobby:
+  world: lobby
+
+game:
+  # Match duration in seconds
+  duration_seconds: 300
+
+  # Delay before sending everyone back to the lobby after match end
+  return_to_lobby_delay_seconds: 5
+
+  # HUD update intervals
+  scoreboard_update_ticks: 10
+  actionbar_update_ticks: 5
+
+  # Fallback template world name (used only when arena.world is missing)
+  default_template_world: sp_arena_1
+
+ink:
+  # How many hits a player can take (Ink HP)
+  max_hp: 3
+
+spawn_protection:
+  # Players are protected inside this radius around their team spawn points
+  radius_blocks: 7.0
+
+  # Additional protection time after respawn
+  after_respawn_seconds: 4
+
+  # Effects applied on respawn
+  resistance_duration_ticks: 60
+  resistance_amplifier: 10
+  no_damage_ticks: 60
+
+weapons:
+  gun:
+    velocity: 1.4
+    paint_radius: 1.5
+    kill_paint_radius: 3.0
+  bomb:
+    velocity: 1.1
+    paint_radius: 5.0
+    kill_paint_radius: 5.0
+
+boosts:
+  enabled: true
+
+  # Random interval between spawns
+  min_interval_seconds: 18
+  max_interval_seconds: 39
+
+  # Chance of Bomb vs Bacillus
+  bomb_percent: 70
+
+  # Drop points in the arena world
+  locations:
+    - [-31.0, 37.0, -12.0]
+    - [-41.0, 44.0, -36.0]
+
+bacillus:
+  duration_seconds: 5
+  range_blocks: 3.2
+  cooldown_ms: 250
+
+movement:
+  sneak_on_ink:
+    enabled: true
+    scan_steps: 3
+    scan_step_blocks: 0.1
+    speed_amplifier: 18
+    invisibility_amplifier: 1
+    effect_duration_ticks: 2
+    task_period_ticks: 1
+
+arenas:
+  - id: arena-1
+    world: sp_arena_1
+    teamCount: 2
+    playersPerTeam: 3
+
+    # Random spawn points per team.
+    # Team IDs are the same as in-game team indices: 0..(teamCount-1)
+    # Point format: [x, y, z, yaw(optional), pitch(optional)]
+    spawns:
+      "0":
+        - [10.5, 65.0, 10.5, 90.0, 0.0]
+        - [12.5, 65.0, 10.5, 90.0, 0.0]
+      "1":
+        - [-10.5, 65.0, -10.5, -90.0, 0.0]
+        - [-12.5, 65.0, -10.5, -90.0, 0.0]

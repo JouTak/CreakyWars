@@ -94,6 +94,50 @@ object ArenaManager {
         arenas.values.toList().forEach { deleteArena(it) }
     }
 
+    /**
+     * Remove orphaned cloned worlds (cw_game_*) that are NOT currently used by running games.
+     * Useful after crashes/reloads, to prevent Multiverse/world-container from accumulating garbage.
+     */
+    fun cleanupOrphans(activeWorlds: Set<String>): Int {
+        if (!::multiverseCore.isInitialized) return 0
+
+        var deleted = 0
+
+        val mvWorldsToDelete = multiverseCore.mvWorldManager.mvWorlds
+            .filter { it.name.startsWith("cw_game_") && !activeWorlds.contains(it.name) }
+            .map { it.name }
+            .toSet()
+
+        mvWorldsToDelete.forEach { worldName ->
+            try {
+                if (multiverseCore.mvWorldManager.deleteWorld(worldName, true, true)) {
+                    deleted++
+                }
+            } catch (_: Exception) {
+            }
+
+            try {
+                File(Bukkit.getWorldContainer(), worldName).deleteRecursively()
+            } catch (_: Exception) {
+            }
+        }
+
+        // Also remove folders without a registered mv-world (rare, but happens after hard crashes)
+        val container = Bukkit.getWorldContainer()
+        container.listFiles { f ->
+            f.isDirectory && f.name.startsWith("cw_game_") && !activeWorlds.contains(f.name)
+        }?.forEach { dir ->
+            try {
+                if (dir.deleteRecursively()) {
+                    deleted++
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        return deleted
+    }
+
     private fun configureWorldRules(world: World) {
         world.difficulty = Difficulty.NORMAL
         world.setSpawnFlags(false, false)

@@ -32,7 +32,9 @@ class CreakyWars : JavaPlugin() {
 
         // Player-facing queue/team commands come from MiniGamesAPI (/ready, /unready, /teamselect, ...).
         // Keep only a mode-specific admin command, same pattern as Splatoon (/splatoon ...).
-        getCommand("creakywars")?.setExecutor(CreakyCommands())
+        val creakyCmd = CreakyCommands()
+        getCommand("creakywars")?.setExecutor(creakyCmd)
+        getCommand("creakywars")?.tabCompleter = creakyCmd
 
         ArenaManager.registerArenasToApi()
 

@@ -25,7 +25,7 @@ class PhaseBossBar(private val game: Game) {
 
         bossBar?.progress = 1.0
 
-        game.players.forEach { player ->
+        game.getAudiencePlayers().forEach { player ->
             bossBar?.addPlayer(player)
         }
     }

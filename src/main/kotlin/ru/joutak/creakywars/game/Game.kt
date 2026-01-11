@@ -2,9 +2,12 @@ package ru.joutak.creakywars.game
 
 import org.bukkit.Bukkit
 import org.bukkit.GameMode
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.Sound
 import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
+import org.bukkit.potion.PotionEffect
 import org.bukkit.event.HandlerList
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.arenas.Arena
@@ -42,8 +45,26 @@ class Game(
 
     private val respawnTimers = mutableMapOf<UUID, BukkitTask>()
 
+    private val spectators = mutableSetOf<UUID>()
+    private val spectatorBackups = mutableMapOf<UUID, SpectatorBackup>()
+
     val players: List<Player>
         get() = playerData.keys.mapNotNull { Bukkit.getPlayer(it) }
+
+    val spectatorsOnline: List<Player>
+        get() = spectators.mapNotNull { Bukkit.getPlayer(it) }
+
+    /**
+     * Players + spectators who should receive match UI (bossbars/scoreboard) and announcements.
+     */
+    fun getAudiencePlayers(): List<Player> {
+        val list = ArrayList<Player>(playerData.size + spectators.size)
+        players.forEach { list.add(it) }
+        spectatorsOnline.forEach { s ->
+            if (list.none { it.uniqueId == s.uniqueId }) list.add(s)
+        }
+        return list
+    }
 
     val activePlayers: List<Player>
         get() = players.filter { getPlayerData(it)?.isAlive == true }
@@ -66,6 +87,176 @@ class Game(
         return getPlayerData(player)?.team
     }
 
+    fun isSpectator(uuid: UUID): Boolean = spectators.contains(uuid)
+
+    fun getSpectators(): List<Player> = spectatorsOnline.toList()
+
+    fun getCurrentPhaseIndex(): Int = currentPhaseIndex
+
+    fun getCurrentPhaseName(): String {
+        return when {
+            arena.state == ArenaState.WAITING -> "Ожидание"
+            arena.state == ArenaState.STARTING -> "Отсчёт"
+            arena.state == ArenaState.ENDING -> "Завершение"
+            currentPhaseIndex >= ScenarioConfig.phases.size -> "Фазы завершены"
+            else -> ScenarioConfig.phases[currentPhaseIndex].name
+        }
+    }
+
+    fun getRemainingPhaseSeconds(): Long? {
+        if (arena.state != ArenaState.IN_GAME) return null
+        if (currentPhaseIndex >= ScenarioConfig.phases.size) return null
+        val phase = ScenarioConfig.phases[currentPhaseIndex]
+        val elapsed = (System.currentTimeMillis() - phaseStartTime) / 1000
+        return (phase.durationSeconds - elapsed).coerceAtLeast(0)
+    }
+
+    fun getCountdownSeconds(): Int? {
+        if (arena.state != ArenaState.STARTING) return null
+        return countdown.coerceAtLeast(0)
+    }
+
+    fun adminStartNow(): Boolean {
+        if (arena.state != ArenaState.STARTING) return false
+        if (startingTask == null) return false
+        startingTask?.cancel()
+        startingTask = null
+        startGame()
+        return true
+    }
+
+    fun adminSkipPhase(): Boolean {
+        if (arena.state != ArenaState.IN_GAME) return false
+        if (currentPhaseIndex >= ScenarioConfig.phases.size) return false
+
+        try {
+            endPhase(currentPhaseIndex)
+        } catch (_: Exception) {
+        }
+
+        if (currentPhaseIndex + 1 < ScenarioConfig.phases.size) {
+            startPhase(currentPhaseIndex + 1)
+        } else {
+            currentPhaseIndex = ScenarioConfig.phases.size
+        }
+        return true
+    }
+
+    fun adminSetPhase(index: Int): Boolean {
+        if (arena.state != ArenaState.IN_GAME) return false
+        if (index < 0 || index >= ScenarioConfig.phases.size) return false
+
+        try {
+            if (currentPhaseIndex < ScenarioConfig.phases.size) {
+                endPhase(currentPhaseIndex)
+            }
+        } catch (_: Exception) {
+        }
+
+        startPhase(index)
+        return true
+    }
+
+    fun adminEnd(reason: String? = null) {
+        if (arena.state == ArenaState.ENDING) return
+        if (!reason.isNullOrBlank()) {
+            broadcastMessage("§cИгра принудительно завершена: §f$reason")
+        } else {
+            broadcastMessage("§cИгра принудительно завершена администратором!")
+        }
+        endGame(null)
+    }
+
+    fun addSpectator(player: Player): Boolean {
+        val uuid = player.uniqueId
+        if (playerData.containsKey(uuid)) {
+            MessageUtils.sendMessage(player, "§cВы уже участвуете в этой игре.")
+            return false
+        }
+
+        if (!spectatorBackups.containsKey(uuid)) {
+            spectatorBackups[uuid] = SpectatorBackup.fromPlayer(player)
+        }
+
+        // Ensure admin is not stuck in queue / match state of the API.
+        try {
+            MatchmakingManager.removePlayer(player)
+        } catch (_: Exception) {
+        }
+
+        spectators.add(uuid)
+
+        // Safe spectator state
+        try {
+            player.inventory.clear()
+            player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
+            player.health = player.maxHealth
+            player.foodLevel = 20
+            player.saturation = 20f
+            player.fireTicks = 0
+            player.gameMode = GameMode.SPECTATOR
+        } catch (_: Exception) {
+        }
+
+        try {
+            player.teleport(getSpectatorViewLocation())
+        } catch (_: Exception) {
+        }
+
+        teamScoreboard.addPlayer(player)
+        teamScoreboard.update()
+        phaseBossBar.addPlayer(player)
+
+        MessageUtils.sendMessage(
+            player,
+            "§aВы наблюдаете за игрой §e#${arena.id}§a на карте §e${arena.mapConfig.displayName}§a."
+        )
+        return true
+    }
+
+    fun removeSpectator(player: Player, silent: Boolean = false, forceLobby: Boolean = true) {
+        val uuid = player.uniqueId
+        if (!spectators.contains(uuid)) return
+
+        spectators.remove(uuid)
+
+        try {
+            phaseBossBar.removePlayer(player)
+        } catch (_: Exception) {
+        }
+        try {
+            teamScoreboard.removePlayer(player)
+        } catch (_: Exception) {
+        }
+
+        val backup = spectatorBackups.remove(uuid)
+        if (backup != null) {
+            backup.restoreTo(player, forceLobby)
+        } else {
+            // Fallback reset
+            val mainWorld = Bukkit.getWorlds().firstOrNull()
+            if (mainWorld != null) {
+                player.teleport(mainWorld.spawnLocation)
+            }
+            player.gameMode = GameMode.ADVENTURE
+            player.inventory.clear()
+            player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
+            player.health = player.maxHealth
+            player.foodLevel = 20
+            player.saturation = 20f
+            player.fireTicks = 0
+        }
+
+        if (!silent) {
+            MessageUtils.sendMessage(player, "§aВы вышли из режима наблюдателя.")
+        }
+    }
+
+    private fun getSpectatorViewLocation(): Location {
+        // Simple safe point: (0.5, 75, 0.5) is used for in-game death spectate as well.
+        return Location(arena.world, 0.5, 75.0, 0.5)
+    }
+
     fun startCountdown() {
         arena.state = ArenaState.STARTING
 
@@ -78,7 +269,7 @@ class Game(
 
             if (countdown <= 5 || countdown % 10 == 0) {
                 broadcastMessage("§eИгра начнется через §c$countdown §eсекунд!")
-                players.forEach {
+                getAudiencePlayers().forEach {
                     it.playSound(it.location, Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f)
                 }
             }
@@ -126,7 +317,7 @@ class Game(
             }
         }
 
-        players.forEach { player ->
+        getAudiencePlayers().forEach { player ->
             teamScoreboard.addPlayer(player)
         }
 
@@ -558,6 +749,15 @@ class Game(
     private fun cleanup() {
         // Snapshot players before we clear internal maps.
         val playersSnapshot = players.toList()
+        val spectatorsSnapshot = spectatorsOnline.toList()
+
+        // Restore / eject spectators first (their backups may depend on current world state).
+        spectatorsSnapshot.forEach { spectator ->
+            try {
+                removeSpectator(spectator, silent = true, forceLobby = true)
+            } catch (_: Exception) {
+            }
+        }
 
         playersSnapshot.forEach { player ->
             teamScoreboard.removePlayer(player)
@@ -582,6 +782,9 @@ class Game(
 
         playerData.clear()
 
+        spectators.clear()
+        spectatorBackups.clear()
+
         GameManager.onGameEnd(this)
     }
 
@@ -591,11 +794,11 @@ class Game(
     }
 
     fun broadcastMessage(message: String) {
-        MessageUtils.broadcastMessage(message, players)
+        MessageUtils.broadcastMessage(message, getAudiencePlayers())
     }
 
     private fun broadcastTitle(title: String, subtitle: String) {
-        players.forEach { MessageUtils.sendTitle(it, title, subtitle) }
+        getAudiencePlayers().forEach { MessageUtils.sendTitle(it, title, subtitle) }
     }
 
     fun debugEnd(winner: Team? = null) {
@@ -638,7 +841,7 @@ class Game(
 
         teamScoreboard.update()
 
-        players.forEach {
+        getAudiencePlayers().forEach {
             it.playSound(it.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f)
         }
 
@@ -682,6 +885,91 @@ class Game(
         if (playerData.isEmpty()) {
             PluginManager.getLogger().info("Все игроки покинули игру на арене #${arena.id}")
             forceEnd()
+        }
+    }
+
+    private data class SpectatorBackup(
+        val location: Location,
+        val gameMode: GameMode,
+        val health: Double,
+        val foodLevel: Int,
+        val saturation: Float,
+        val fireTicks: Int,
+        val exp: Float,
+        val level: Int,
+        val contents: Array<ItemStack?>,
+        val armorContents: Array<ItemStack?>,
+        val offHand: ItemStack,
+        val effects: List<PotionEffect>
+    ) {
+        companion object {
+            fun fromPlayer(player: Player): SpectatorBackup {
+                val contents = player.inventory.contents.map { it?.clone() }.toTypedArray()
+                val armor = player.inventory.armorContents.map { it?.clone() }.toTypedArray()
+                val offHand = player.inventory.itemInOffHand?.clone() ?: ItemStack(Material.AIR)
+                val effects = player.activePotionEffects.map { it }
+
+                return SpectatorBackup(
+                    location = player.location.clone(),
+                    gameMode = player.gameMode,
+                    health = player.health,
+                    foodLevel = player.foodLevel,
+                    saturation = player.saturation,
+                    fireTicks = player.fireTicks,
+                    exp = player.exp,
+                    level = player.level,
+                    contents = contents,
+                    armorContents = armor,
+                    offHand = offHand,
+                    effects = effects
+                )
+            }
+        }
+
+        fun restoreTo(player: Player, forceLobby: Boolean) {
+            try {
+                player.inventory.clear()
+            } catch (_: Exception) {
+            }
+
+            try {
+                player.inventory.contents = contents.map { it?.clone() }.toTypedArray()
+                player.inventory.armorContents = armorContents.map { it?.clone() }.toTypedArray()
+                player.inventory.setItemInOffHand(offHand.clone())
+            } catch (_: Exception) {
+            }
+
+            try {
+                player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
+                effects.forEach { player.addPotionEffect(it) }
+            } catch (_: Exception) {
+            }
+
+            try {
+                player.health = health.coerceAtMost(player.maxHealth)
+                player.foodLevel = foodLevel
+                player.saturation = saturation
+                player.fireTicks = fireTicks
+                player.exp = exp
+                player.level = level
+                player.gameMode = gameMode
+            } catch (_: Exception) {
+            }
+
+            val fallback = Bukkit.getWorlds().firstOrNull()?.spawnLocation
+            val target = when {
+                forceLobby -> fallback
+                location.world == null -> fallback
+                location.world!!.name.startsWith("cw_game_") -> fallback
+                else -> location
+            }
+
+            if (target != null) {
+                try {
+                    player.teleport(target)
+                } catch (_: Exception) {
+                }
+            }
         }
     }
 }

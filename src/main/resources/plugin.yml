@@ -11,11 +11,14 @@ depend: [Multiverse-Core]
 commands:
   creakywars:
     description: "CreakyWars admin utilities"
-    usage: "/creakywars reload"
+    usage: "/creakywars help"
 
 permissions:
   creakywars.admin:
     description: "Admin tools for CreakyWars"
+    default: op
+  creakywars.admin.danger:
+    description: "Dangerous admin actions (end/phase/cleanup)"
     default: op
 
 libraries:
