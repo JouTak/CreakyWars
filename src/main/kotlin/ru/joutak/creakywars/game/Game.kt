@@ -714,7 +714,7 @@ class Game(
 
             player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_PLING, 0.5f, 1f)
             remainingSeconds--
-        }, 0L, 1L)
+        }, 0L, 20L)
 
         respawnTimers[player.uniqueId] = timerTask
     }
@@ -830,21 +830,9 @@ class Game(
         }
 
         if (winnerTeam != null) {
-            val winnerName = "${winnerTeam.color}${winnerTeam.name}"
-
-            // Titles should be personal: winners see "Победа", everyone else sees "Поражение" / neutral.
-            getAudiencePlayers().forEach { player ->
-                val data = getPlayerData(player)
-                when {
-                    data?.team?.id == winnerTeam.id -> MessageUtils.sendTitle(player, "§6Победа!", "§e$winnerName")
-                    spectators.contains(player.uniqueId) || data?.team == null ->
-                        MessageUtils.sendTitle(player, "§eИгра окончена", "§7Победитель: §e$winnerName")
-                    else -> MessageUtils.sendTitle(player, "§cПоражение!", "§7Победитель: §e$winnerName")
-                }
-            }
-
+            broadcastTitle("§6Победа!", "§e${winnerTeam.color}${winnerTeam.name}")
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
-            broadcastMessage("§6§lПОБЕДИТЕЛЬ: $winnerName")
+            broadcastMessage("§6§lПОБЕДА: ${winnerTeam.color}${winnerTeam.name}")
             displayStats()
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
 
@@ -1140,10 +1128,12 @@ class Game(
             }
 
             val fallback = Bukkit.getWorlds().firstOrNull()?.spawnLocation
+            val templatePrefix = "${AdminConfig.templateWorldName}_"
             val target = when {
                 forceLobby -> fallback
                 location.world == null -> fallback
-                location.world!!.name.startsWith("cw_game_") -> fallback
+                location.world!!.name.startsWith(templatePrefix) && location.world!!.name.removePrefix(templatePrefix).toIntOrNull() != null -> fallback
+                location.world!!.name.startsWith("cw_game_") -> fallback // legacy
                 else -> location
             }
 
