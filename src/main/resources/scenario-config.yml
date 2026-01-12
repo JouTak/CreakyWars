@@ -1,10 +1,8 @@
 phases:
   phase1:
     name: "Фаза 1: Подготовка"
-    # Legacy (seconds). Used only if end-at-tick is not provided.
-    duration: 600
 
-    # New: absolute server ticks from game start when the phase should end.
+    # absolute server ticks from game start when the phase should end.
     # 6000 ticks ~= 5 minutes (at 20 TPS). In this mode phases can be aligned with DayNightCycle.
     end-at-tick: 6000
 
@@ -34,12 +32,11 @@ phases:
     creaking-speed-amplifier: 0
     glow-players: false
 
-    start-message: "§6§lФАЗА 2! §eРесурсы спавнятся в 1.5 раза быстрее!"
+    start-message: "§6§lФАЗА 2! §eНа центральном острове впервые появились глазалии, а остальные ресурсы спавнятся в 1.5 раза быстрее!"
     end-message: "Фаза 2 завершена!"
 
   phase3:
     name: "Фаза 3: Усиление"
-    duration: 600
     # Two full day-night cycles after phase2 ends (default DayNightCycle day=6000, night=6000):
     end-at-tick: 36000
 
@@ -49,16 +46,32 @@ phases:
     border-shrink-speed: 0.0
     border-final-size: 261.0
 
-    # SPEED II on Creakings
     creaking-speed-amplifier: 1
     glow-players: false
 
-    start-message: "§c§lФАЗА 3! §eРеспавн отключён, скрипуны усилены!"
-    end-message: "Начинается финал!"
+    start-message: "§c§lФАЗА 3! §eСкрипуны усилены!"
+    end-message: "Фаза 3 завершена!"
 
   phase4:
-    name: "Фаза 4: Финал"
-    duration: 600
+    name: "Фаза 4: Страх"
+    # Two full day-night cycles after phase2 ends (default DayNightCycle day=6000, night=6000):
+    end-at-tick: 36000
+
+    resource-multiplier: 2.0
+    respawn-enabled: false
+    border-shrink: false
+    border-shrink-speed: 0.0
+    border-final-size: 261.0
+
+    creaking-speed-amplifier: 1
+    glow-players: false
+
+    start-message: "§c§lФАЗА 4! §eВозрождение отключено!"
+    end-message: "Фаза 4 завершена!"
+
+
+  phase5:
+    name: "Фаза 5: Финал"
     end-at-tick: 999999
 
     resource-multiplier: 2.0
@@ -67,7 +80,7 @@ phases:
     border-shrink-speed: 0.3
     border-final-size: 71.0
 
-    creaking-speed-amplifier: 1
+    creaking-speed-amplifier: 2
     glow-players: true
 
     start-message: "§4§lФИНАЛ! §eГраница мира сужается!"

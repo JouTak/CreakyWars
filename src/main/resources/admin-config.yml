@@ -6,7 +6,7 @@ maps:
     - game
 
 games:
-  max-parallel: 1
+  max-parallel: 10
 
 teams:
   max-players-per-team: 4

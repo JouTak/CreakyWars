@@ -92,16 +92,16 @@ trades:
     display-name: "Обожжённая глина"
     category: "blocks"
 
-  end_stone:
-    cost: "rubber_mid:6"
-    result: "END_STONE:12"
-    display-name: "Эндерстоун"
-    category: "blocks"
-
   planks:
     cost: "rubber_mid:4"
     result: "OAK_PLANKS:16"
     display-name: "Доски"
+    category: "blocks"
+
+  end_stone:
+    cost: "rubber_mid:6"
+    result: "END_STONE:12"
+    display-name: "Эндерняк"
     category: "blocks"
 
   obsidian:
@@ -129,17 +129,17 @@ trades:
     category: "swords"
 
   knockback_stick:
-    cost: "rubber_mid:15"
-    result: "STICK:1"
-    display-name: "Откидывающая палка"
+    cost: "rubber_mid:20"
+    result: "MACE:1"
+    display-name: "Откидывающая булава"
     category: "swords"
     enchantments:
       - "KNOCKBACK:2"
 
   chainmail_armor:
-    cost: "rubber_low:40"
-    result: "CHAINMAIL_LEGGINGS:1"
-    display-name: "Кольчужная броня"
+    cost: "rubber_low:30"
+    result: "COPPER_LEGGINGS:1"
+    display-name: "Медная броня"
     category: "armor"
 
   iron_armor:
@@ -154,6 +154,12 @@ trades:
     display-name: "Незеритовая броня"
     category: "armor"
 
+  elytra:
+    cost: "eyeblossom:10"
+    result: "ELYTRA:1"
+    display-name: "Элитры. Да, элитры"
+    category: "armor"
+
   # Tools
   wooden_pickaxe:
     cost: "rubber_low:20"
@@ -162,7 +168,7 @@ trades:
     category: "tools"
 
   wooden_axe:
-    cost: "rubber_low:20"
+    cost: "rubber_low:25"
     result: "WOODEN_AXE:1"
     display-name: "Деревянный топор"
     category: "tools"
@@ -174,19 +180,19 @@ trades:
     category: "tools"
 
   stone_axe:
-    cost: "rubber_low:25"
+    cost: "rubber_low:30"
     result: "STONE_AXE:1"
     display-name: "Каменный топор"
     category: "tools"
 
   iron_pickaxe:
-    cost: "rubber_low:30"
+    cost: "rubber_mid:5"
     result: "IRON_PICKAXE:1"
     display-name: "Железная кирка"
     category: "tools"
 
   iron_axe:
-    cost: "rubber_low:30"
+    cost: "rubber_mid:6"
     result: "IRON_AXE:1"
     display-name: "Железный топор"
     category: "tools"
@@ -216,7 +222,7 @@ trades:
     category: "special"
 
   tnt:
-    cost: "rubber_low:40"
+    cost: "rubber_low:64"
     result: "TNT:1"
     display-name: "Динамит"
     category: "special"
@@ -225,6 +231,12 @@ trades:
     cost: "rubber_mid:3"
     result: "GOLDEN_APPLE:1"
     display-name: "Золотое яблоко"
+    category: "special"
+
+  wind_charge:
+    cost: "rubber_low:20"
+    result: "WIND_CHARGE:5"
+    display-name: "Заряды ветра"
     category: "special"
 
   ender_eye:
@@ -272,9 +284,9 @@ upgrades:
       level: 2
 
   fast-respawn:
-    cost: "rubber_high:10"
-    delay: 10
+    cost: "rubber_high:15"
+    delay: 5
 
   trap:
-    cost: "rubber_high:10"
+    cost: "rubber_high:2"
     range: 15
