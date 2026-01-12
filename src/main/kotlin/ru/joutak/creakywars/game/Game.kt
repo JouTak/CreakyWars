@@ -475,6 +475,11 @@ class Game(
                         border.size - currentPhase.borderShrinkSpeed
                     )
                 }
+
+                // На некоторых настройках/сборках урон за пределами границы может быть выключен.
+                // Обновляем каждый шаг сужения, чтобы игроки не могли "пересидеть" за границей.
+                border.damageBuffer = 0.0
+                border.damageAmount = 2.0
             }
         }
 
@@ -675,7 +680,6 @@ class Game(
 
         var remainingSeconds = delaySeconds
 
-        // IMPORTANT: delaySeconds is in *seconds*, so the timer must tick once per second (20 ticks).
         val timerTask = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
             if (team.coreDestroyed) {
                 respawnTimers[player.uniqueId]?.cancel()
@@ -715,7 +719,7 @@ class Game(
 
             player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_PLING, 0.5f, 1f)
             remainingSeconds--
-        }, 0L, 20L)
+        }, 0L, 1L)
 
         respawnTimers[player.uniqueId] = timerTask
     }
@@ -1129,12 +1133,10 @@ class Game(
             }
 
             val fallback = Bukkit.getWorlds().firstOrNull()?.spawnLocation
-            val templatePrefix = "${AdminConfig.templateWorldName}_"
             val target = when {
                 forceLobby -> fallback
                 location.world == null -> fallback
-                location.world!!.name.startsWith(templatePrefix) && location.world!!.name.removePrefix(templatePrefix).toIntOrNull() != null -> fallback
-                location.world!!.name.startsWith("cw_game_") -> fallback // legacy
+                location.world!!.name.startsWith("cw_game_") -> fallback
                 else -> location
             }
 

@@ -6,10 +6,12 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Sound
 import org.bukkit.entity.Creaking
+import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.metadata.FixedMetadataValue
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.scheduler.BukkitTask
@@ -32,6 +34,10 @@ class CreakingListener : Listener {
         )
 
         private val stuck = mutableMapOf<UUID, StuckState>()
+
+        // Мы принудительно ведём скрипунов на выбранную цель, не полагаясь на ванильный выбор таргета
+        // (у скрипуна он зависит от "кто на него смотрит", что нам не подходит для мини-игры).
+        private val desiredTarget = mutableMapOf<UUID, UUID>()
 
         private val anchorWorldKey by lazy { NamespacedKey(PluginManager.getPlugin(), "creaking_anchor_world") }
         private val anchorXKey by lazy { NamespacedKey(PluginManager.getPlugin(), "creaking_anchor_x") }
@@ -61,6 +67,7 @@ class CreakingListener : Listener {
             creakingAITask?.cancel()
             creakingAITask = null
             stuck.clear()
+            desiredTarget.clear()
         }
 
         fun setAnchor(creaking: Creaking, anchor: Location) {
@@ -145,25 +152,57 @@ class CreakingListener : Listener {
                 .minByOrNull { it.location.distanceSquared(creaking.location) }
 
             if (targetPlayer != null) {
-                // Быстрое переагривание: сбрасываем цель, если ближайший игрок сменился.
-                val current = creaking.target
-                if (current == null || current.uniqueId != targetPlayer.uniqueId) {
-                    creaking.target = null
-                }
-                creaking.target = targetPlayer
+                // Не доверяем ванильной логике скрипуна (она зависит от "кто на него смотрит").
+                // Всегда ведём на ближайшего, быстро переагриваясь.
+                desiredTarget[creaking.uniqueId] = targetPlayer.uniqueId
+                forceSetTarget(creaking, targetPlayer)
+                applyChaseForce(creaking, targetPlayer.location)
+
                 handleStuckAndBreak(creaking, targetPlayer.location)
                 sabotageBridges(creaking, targetPlayer.location)
                 return
             }
 
+            // Нет цели в радиусе — сбрасываем агр, чтобы не "запоминал" прошлую жертву.
+            desiredTarget.remove(creaking.uniqueId)
+            creaking.target = null
+
             if (anchor != null) {
                 // Если в будущем появится "призыв на базу" — без игроков рядом он будет тянуться к якорю.
+                applyChaseForce(creaking, anchor)
                 handleStuckAndBreak(creaking, anchor)
                 return
             }
 
-            creaking.target = null
             stuck.remove(creaking.uniqueId)
+        }
+
+        private fun forceSetTarget(creaking: Creaking, player: Player) {
+            val current = creaking.target
+            if (current == null || current.uniqueId != player.uniqueId) {
+                creaking.target = null
+                creaking.target = player
+            } else {
+                // Перестраховка: ванильный скрипун может сам пытаться сбрасывать таргет.
+                creaking.target = player
+            }
+        }
+
+        private fun applyChaseForce(creaking: Creaking, target: Location) {
+            // Лёгкий push к цели каждый AI-такт, чтобы:
+            // 1) не зависеть от ванильной "заморозки" когда на него смотрят
+            // 2) быстро перестраивать траекторию при смене цели
+            if (creaking.hasMetadata("breaking")) return
+
+            val v = target.toVector().subtract(creaking.location.toVector())
+            if (v.lengthSquared() < 1.0) return
+
+            val desired = v.normalize().multiply(0.18)
+            // не пихаем вверх/вниз, иначе будет странно на лестницах
+            desired.y = creaking.velocity.y.coerceIn(-0.15, 0.15)
+
+            val vel = creaking.velocity
+            creaking.velocity = vel.multiply(0.35).add(desired)
         }
 
         private fun handleStuckAndBreak(creaking: Creaking, target: Location) {
@@ -254,6 +293,47 @@ class CreakingListener : Listener {
                 }
                 creaking.removeMetadata("breaking", PluginManager.getPlugin())
             }, breakTime)
+        }
+    }
+
+    @EventHandler
+    fun onCreakingTarget(event: EntityTargetLivingEntityEvent) {
+        val creaking = event.entity as? Creaking ?: return
+
+        val game = GameManager.getActiveGames().firstOrNull {
+            it.arena.world == creaking.world && it.arena.state == ArenaState.IN_GAME
+        } ?: return
+
+        val desiredId = desiredTarget[creaking.uniqueId]
+        if (desiredId == null) {
+            // Если наша AI-логика сейчас не выбрала цель — запрещаем скрипуну "держать" старую.
+            if (event.target is Player) {
+                event.isCancelled = true
+            }
+            return
+        }
+
+        val desiredPlayer = Bukkit.getPlayer(desiredId)
+        if (desiredPlayer == null || desiredPlayer.world != creaking.world || desiredPlayer.isDead) {
+            desiredTarget.remove(creaking.uniqueId)
+            event.isCancelled = true
+            creaking.target = null
+            return
+        }
+
+        // Учитываем ignoreTeamId на всякий случай (на случай ручного setIgnoreTeamId).
+        val ignoreTeamId = getIgnoreTeamId(creaking)
+        if (ignoreTeamId != null) {
+            val teamId = game.getPlayerData(desiredPlayer)?.team?.id
+            if (teamId != null && teamId == ignoreTeamId) {
+                event.isCancelled = true
+                creaking.target = null
+                return
+            }
+        }
+
+        if (event.target == null || (event.target as? Player)?.uniqueId != desiredId) {
+            event.target = desiredPlayer
         }
     }
 
