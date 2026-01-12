@@ -675,6 +675,7 @@ class Game(
 
         var remainingSeconds = delaySeconds
 
+        // IMPORTANT: delaySeconds is in *seconds*, so the timer must tick once per second (20 ticks).
         val timerTask = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
             if (team.coreDestroyed) {
                 respawnTimers[player.uniqueId]?.cancel()
@@ -714,7 +715,7 @@ class Game(
 
             player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_PLING, 0.5f, 1f)
             remainingSeconds--
-        }, 0L, 1L)
+        }, 0L, 20L)
 
         respawnTimers[player.uniqueId] = timerTask
     }
@@ -1128,10 +1129,12 @@ class Game(
             }
 
             val fallback = Bukkit.getWorlds().firstOrNull()?.spawnLocation
+            val templatePrefix = "${AdminConfig.templateWorldName}_"
             val target = when {
                 forceLobby -> fallback
                 location.world == null -> fallback
-                location.world!!.name.startsWith("cw_game_") -> fallback
+                location.world!!.name.startsWith(templatePrefix) && location.world!!.name.removePrefix(templatePrefix).toIntOrNull() != null -> fallback
+                location.world!!.name.startsWith("cw_game_") -> fallback // legacy
                 else -> location
             }
 
