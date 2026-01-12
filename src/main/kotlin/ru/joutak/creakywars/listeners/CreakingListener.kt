@@ -1,49 +1,44 @@
 package ru.joutak.creakywars.listeners
 
 import org.bukkit.Bukkit
+import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.Sound
 import org.bukkit.entity.Creaking
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.metadata.FixedMetadataValue
+import org.bukkit.persistence.PersistentDataType
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.Game
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.arenas.ArenaState
 import ru.joutak.creakywars.utils.PluginManager
-import org.bukkit.entity.Player
+import java.util.UUID
 
 class CreakingListener : Listener {
 
-    private fun isTerracotta(mat: Material): Boolean {
-        return mat.name.endsWith("TERRACOTTA")
-    }
-
-    private fun isWool(mat: Material): Boolean {
-        return mat.name.endsWith("WOOL")
-    }
-
-    private fun calculateBreakTime(material: Material): Long {
-        val baseHardness = when {
-            material == Material.OBSIDIAN -> 100L
-            material == Material.END_STONE -> 60L
-            material == Material.CLAY -> 40L
-            material == Material.OAK_PLANKS -> 30L
-
-            isTerracotta(material) -> 25L
-            isWool(material) -> 10L
-
-            else -> 20L
-        }
-
-        return (baseHardness / GameConfig.creakingBreakSpeed).toLong().coerceAtLeast(1L)
-    }
-
     companion object {
+        private const val AI_PERIOD_TICKS = 2
         private var creakingAITask: BukkitTask? = null
+
+        private data class StuckState(
+            var lastLoc: Location,
+            var notMovedTicks: Int
+        )
+
+        private val stuck = mutableMapOf<UUID, StuckState>()
+
+        private val anchorWorldKey by lazy { NamespacedKey(PluginManager.getPlugin(), "creaking_anchor_world") }
+        private val anchorXKey by lazy { NamespacedKey(PluginManager.getPlugin(), "creaking_anchor_x") }
+        private val anchorYKey by lazy { NamespacedKey(PluginManager.getPlugin(), "creaking_anchor_y") }
+        private val anchorZKey by lazy { NamespacedKey(PluginManager.getPlugin(), "creaking_anchor_z") }
+
+        private val ignoreTeamIdKey by lazy { NamespacedKey(PluginManager.getPlugin(), "creaking_ignore_team_id") }
 
         fun init() {
             if (creakingAITask == null) {
@@ -57,61 +52,208 @@ class CreakingListener : Listener {
                                 }
                         }
                     }
-                }, 0L, 10L)
+                }, 0L, AI_PERIOD_TICKS.toLong())
                 PluginManager.getLogger().info("✓ Creaking AI Task started.")
             }
         }
 
+        fun shutdown() {
+            creakingAITask?.cancel()
+            creakingAITask = null
+            stuck.clear()
+        }
+
+        fun setAnchor(creaking: Creaking, anchor: Location) {
+            val w = anchor.world ?: return
+            val pdc = creaking.persistentDataContainer
+            pdc.set(anchorWorldKey, PersistentDataType.STRING, w.name)
+            pdc.set(anchorXKey, PersistentDataType.INTEGER, anchor.blockX)
+            pdc.set(anchorYKey, PersistentDataType.INTEGER, anchor.blockY)
+            pdc.set(anchorZKey, PersistentDataType.INTEGER, anchor.blockZ)
+        }
+
+        fun clearAnchor(creaking: Creaking) {
+            val pdc = creaking.persistentDataContainer
+            pdc.remove(anchorWorldKey)
+            pdc.remove(anchorXKey)
+            pdc.remove(anchorYKey)
+            pdc.remove(anchorZKey)
+        }
+
+        /**
+         * "Спавн за команду": команда с этим id будет игнорироваться скрипуном.
+         * По умолчанию (если не задано) скрипун агрится на всех.
+         */
+        fun setIgnoreTeamId(creaking: Creaking, teamId: Int) {
+            creaking.persistentDataContainer.set(ignoreTeamIdKey, PersistentDataType.INTEGER, teamId)
+        }
+
+        fun clearIgnoreTeamId(creaking: Creaking) {
+            creaking.persistentDataContainer.remove(ignoreTeamIdKey)
+        }
+
+        private fun getIgnoreTeamId(creaking: Creaking): Int? {
+            return creaking.persistentDataContainer.get(ignoreTeamIdKey, PersistentDataType.INTEGER)
+        }
+
+        private fun getAnchor(creaking: Creaking): Location? {
+            val pdc = creaking.persistentDataContainer
+            val worldName = pdc.get(anchorWorldKey, PersistentDataType.STRING) ?: return null
+            val world = Bukkit.getWorld(worldName) ?: return null
+            val x = pdc.get(anchorXKey, PersistentDataType.INTEGER) ?: return null
+            val y = pdc.get(anchorYKey, PersistentDataType.INTEGER) ?: return null
+            val z = pdc.get(anchorZKey, PersistentDataType.INTEGER) ?: return null
+            return Location(world, x + 0.5, y.toDouble(), z + 0.5)
+        }
+
+        private fun isTerracotta(mat: Material): Boolean = mat.name.endsWith("TERRACOTTA")
+        private fun isWool(mat: Material): Boolean = mat.name.endsWith("WOOL")
+
+        private fun calculateBreakTime(material: Material): Long {
+            val baseHardness = when {
+                material == Material.OBSIDIAN -> 100L
+                material == Material.END_STONE -> 60L
+                material == Material.CLAY -> 40L
+                material == Material.OAK_PLANKS -> 30L
+
+                isTerracotta(material) -> 25L
+                isWool(material) -> 10L
+
+                else -> 20L
+            }
+
+            return (baseHardness / GameConfig.creakingBreakSpeed).toLong().coerceAtLeast(1L)
+        }
+
         private fun updateCreakingAI(creaking: Creaking, game: Game) {
             val aggroRadius = GameConfig.creakingAggroRadius
+            val aggroRadiusSq = aggroRadius * aggroRadius
+
+            val ignoreTeamId = getIgnoreTeamId(creaking)
+
+            val anchor = getAnchor(creaking)
 
             val targetPlayer = game.activePlayers
-                .filter { it.world == creaking.world && it.location.distance(creaking.location) <= aggroRadius }
+                .asSequence()
+                .filter { it.world == creaking.world }
+                .filter { it.location.distanceSquared(creaking.location) <= aggroRadiusSq }
+                .filter { player ->
+                    if (ignoreTeamId == null) return@filter true
+                    val teamId = game.getPlayerData(player)?.team?.id
+                    teamId == null || teamId != ignoreTeamId
+                }
                 .minByOrNull { it.location.distanceSquared(creaking.location) }
 
             if (targetPlayer != null) {
-                creaking.target = targetPlayer
-
-                val blockInFront = getBlockInFront(creaking)
-
-                if (blockInFront != null && GameConfig.allowedBlocks.contains(blockInFront.type)) {
-
-                    if (blockInFront.location.distanceSquared(creaking.location) < 4.0) {
-
-                        val breakTime = CreakingListener().calculateBreakTime(blockInFront.type)
-
-                        if (!creaking.hasMetadata("breaking")) {
-                            creaking.setMetadata("breaking", org.bukkit.metadata.FixedMetadataValue(PluginManager.getPlugin(), true))
-
-                            Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
-                                if (blockInFront.type != Material.AIR) {
-                                    blockInFront.type = Material.AIR
-                                    creaking.world.playSound(blockInFront.location, Sound.BLOCK_STONE_BREAK, 1.0f, 1.0f)
-                                }
-                                creaking.removeMetadata("breaking", PluginManager.getPlugin())
-                            }, breakTime)
-                        }
-                    }
+                // Быстрое переагривание: сбрасываем цель, если ближайший игрок сменился.
+                val current = creaking.target
+                if (current == null || current.uniqueId != targetPlayer.uniqueId) {
+                    creaking.target = null
                 }
-            } else {
-                creaking.target = null
+                creaking.target = targetPlayer
+                handleStuckAndBreak(creaking, targetPlayer.location)
+                sabotageBridges(creaking, targetPlayer.location)
+                return
             }
+
+            if (anchor != null) {
+                // Если в будущем появится "призыв на базу" — без игроков рядом он будет тянуться к якорю.
+                handleStuckAndBreak(creaking, anchor)
+                return
+            }
+
+            creaking.target = null
+            stuck.remove(creaking.uniqueId)
         }
 
-        private fun getBlockInFront(creaking: Creaking): org.bukkit.block.Block? {
-            val forwardVec = creaking.location.direction.setY(0).normalize()
-            val blockLoc = creaking.location.add(forwardVec.multiply(1.0))
+        private fun handleStuckAndBreak(creaking: Creaking, target: Location) {
+            val id = creaking.uniqueId
+            val current = creaking.location
+            val state = stuck.getOrPut(id) { StuckState(current.clone(), 0) }
 
-            val blockBelow = blockLoc.block
-            val blockAbove = blockLoc.clone().add(0.0, 1.0, 0.0).block
+            val moved = state.lastLoc.world == current.world && state.lastLoc.distanceSquared(current) > 0.12 * 0.12
+            if (moved) {
+                state.lastLoc = current.clone()
+                state.notMovedTicks = 0
+                return
+            }
 
-            if (blockBelow.type.isSolid && GameConfig.allowedBlocks.contains(blockBelow.type)) {
-                return blockBelow
-            }
-            if (blockAbove.type.isSolid && GameConfig.allowedBlocks.contains(blockAbove.type)) {
-                return blockAbove
-            }
-            return null
+            state.notMovedTicks += AI_PERIOD_TICKS
+            if (state.notMovedTicks < 40) return // ~2 секунды
+            state.notMovedTicks = 0
+
+            tryBreakTowards(creaking, target)
+        }
+
+        private fun tryBreakTowards(creaking: Creaking, target: Location) {
+            if (creaking.hasMetadata("breaking")) return
+
+            val from = creaking.location.toVector()
+            val to = target.toVector()
+            val dir = to.subtract(from)
+            if (dir.lengthSquared() < 0.001) return
+            dir.normalize()
+
+            val base = creaking.location.clone().add(dir.clone().multiply(1.0))
+
+            // Скрипун высокий (≈3 блока), ломаем коридор 3-high.
+            val blocksToBreak = listOf(
+                base.clone().add(0.0, 0.0, 0.0).block,
+                base.clone().add(0.0, 1.0, 0.0).block,
+                base.clone().add(0.0, 2.0, 0.0).block
+            ).filter { it.type.isSolid && GameConfig.allowedBlocks.contains(it.type) }
+
+            if (blocksToBreak.isEmpty()) return
+
+            val breakTime = blocksToBreak.maxOf { calculateBreakTime(it.type) }
+            creaking.setMetadata("breaking", FixedMetadataValue(PluginManager.getPlugin(), true))
+
+            Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
+                if (creaking.isDead) {
+                    creaking.removeMetadata("breaking", PluginManager.getPlugin())
+                    return@Runnable
+                }
+
+                var brokeAny = false
+                blocksToBreak.forEach { b ->
+                    if (b.type != Material.AIR) {
+                        b.type = Material.AIR
+                        brokeAny = true
+                    }
+                }
+
+                if (brokeAny) {
+                    creaking.world.playSound(creaking.location, Sound.BLOCK_STONE_BREAK, 1.0f, 1.0f)
+                }
+                creaking.removeMetadata("breaking", PluginManager.getPlugin())
+            }, breakTime)
+        }
+
+        private fun sabotageBridges(creaking: Creaking, target: Location) {
+            // Ненавязчивый саботаж "дорог к центру": ломаем мосты из разрешённых блоков над воздухом.
+            if (creaking.hasMetadata("breaking")) return
+            if (creaking.location.distanceSquared(target) < 12.0 * 12.0) return
+
+            val now = System.currentTimeMillis()
+            val meta = creaking.getMetadata("sabotage_until").firstOrNull { it.owningPlugin == PluginManager.getPlugin() }
+            val until = meta?.asLong() ?: 0L
+            if (until > now) return
+            creaking.setMetadata("sabotage_until", FixedMetadataValue(PluginManager.getPlugin(), now + 2500L))
+
+            val under = creaking.location.clone().add(0.0, -1.0, 0.0).block
+            val under2 = creaking.location.clone().add(0.0, -2.0, 0.0).block
+            if (!GameConfig.allowedBlocks.contains(under.type)) return
+            if (under2.type != Material.AIR) return
+
+            val breakTime = calculateBreakTime(under.type)
+            creaking.setMetadata("breaking", FixedMetadataValue(PluginManager.getPlugin(), true))
+            Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
+                if (!creaking.isDead && under.type != Material.AIR) {
+                    under.type = Material.AIR
+                    creaking.world.playSound(under.location, Sound.BLOCK_STONE_BREAK, 0.9f, 0.9f)
+                }
+                creaking.removeMetadata("breaking", PluginManager.getPlugin())
+            }, breakTime)
         }
     }
 
