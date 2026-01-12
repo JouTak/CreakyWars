@@ -475,11 +475,6 @@ class Game(
                         border.size - currentPhase.borderShrinkSpeed
                     )
                 }
-
-                // На некоторых настройках/сборках урон за пределами границы может быть выключен.
-                // Обновляем каждый шаг сужения, чтобы игроки не могли "пересидеть" за границей.
-                border.damageBuffer = 0.0
-                border.damageAmount = 2.0
             }
         }
 
@@ -835,9 +830,21 @@ class Game(
         }
 
         if (winnerTeam != null) {
-            broadcastTitle("§6Победа!", "§e${winnerTeam.color}${winnerTeam.name}")
+            val winnerName = "${winnerTeam.color}${winnerTeam.name}"
+
+            // Titles should be personal: winners see "Победа", everyone else sees "Поражение" / neutral.
+            getAudiencePlayers().forEach { player ->
+                val data = getPlayerData(player)
+                when {
+                    data?.team?.id == winnerTeam.id -> MessageUtils.sendTitle(player, "§6Победа!", "§e$winnerName")
+                    spectators.contains(player.uniqueId) || data?.team == null ->
+                        MessageUtils.sendTitle(player, "§eИгра окончена", "§7Победитель: §e$winnerName")
+                    else -> MessageUtils.sendTitle(player, "§cПоражение!", "§7Победитель: §e$winnerName")
+                }
+            }
+
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
-            broadcastMessage("§6§lПОБЕДА: ${winnerTeam.color}${winnerTeam.name}")
+            broadcastMessage("§6§lПОБЕДИТЕЛЬ: $winnerName")
             displayStats()
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
 
