@@ -99,7 +99,12 @@ object GameConfig {
         nightDurationTicks = config.getLong("day-night-cycle.night-duration-ticks", 6000L)
         eyeblossomOpenPercent = config.getDouble("day-night-cycle.eyeblossom-open-percent", 0.5)
         creakingAggroRadius = config.getDouble("day-night-cycle.creaking-aggro-radius", 60.0)
-        creakingBreakSpeed = config.getDouble("day-night-cycle.creaking-break-speed", 1.5)
+        creakingBreakSpeed = if (config.contains("day-night-cycle.creaking-break-speed")) {
+            config.getDouble("day-night-cycle.creaking-break-speed", 1.5)
+        } else {
+            // legacy key in older configs
+            config.getDouble("day-night-cycle.creakingBreakSpeed", 1.5)
+        }
     }
 
     private fun loadRespawnSettings() {

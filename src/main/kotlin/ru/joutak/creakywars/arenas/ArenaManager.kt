@@ -67,18 +67,21 @@ object ArenaManager {
         if (template == null) template = Bukkit.getWorld(AdminConfig.templateWorldName)
         val templateWorld = template ?: throw IllegalStateException("Template world not found")
 
-        val worldName = "cw_game_${mapConfigName}_${nextArenaId++}"
+        val arenaId = nextArenaId
+        val worldName = "${templateWorld.name}_${arenaId}"
 
         if (!multiverseCore.mvWorldManager.cloneWorld(templateWorld.name, worldName)) {
             throw IllegalStateException("Failed to clone world $worldName")
         }
+
+        nextArenaId++
 
         val world = Bukkit.getWorld(worldName) ?: throw IllegalStateException("World $worldName is null after clone")
         configureWorldRules(world)
 
         val mapConfig = MapConfig.load(mapConfigName)
 
-        val arena = Arena(nextArenaId, world, mapConfig)
+        val arena = Arena(arenaId, world, mapConfig)
         arenas[worldName] = arena
         return arena
     }
@@ -103,8 +106,18 @@ object ArenaManager {
 
         var deleted = 0
 
+        val templatePrefix = "${AdminConfig.templateWorldName}_"
+
+        fun isCloneWorldName(name: String): Boolean {
+            if (name.startsWith(templatePrefix)) {
+                return name.removePrefix(templatePrefix).toIntOrNull() != null
+            }
+            // legacy
+            return name.startsWith("cw_game_")
+        }
+
         val mvWorldsToDelete = multiverseCore.mvWorldManager.mvWorlds
-            .filter { it.name.startsWith("cw_game_") && !activeWorlds.contains(it.name) }
+            .filter { isCloneWorldName(it.name) && !activeWorlds.contains(it.name) }
             .map { it.name }
             .toSet()
 
@@ -125,7 +138,7 @@ object ArenaManager {
         // Also remove folders without a registered mv-world (rare, but happens after hard crashes)
         val container = Bukkit.getWorldContainer()
         container.listFiles { f ->
-            f.isDirectory && f.name.startsWith("cw_game_") && !activeWorlds.contains(f.name)
+            f.isDirectory && isCloneWorldName(f.name) && !activeWorlds.contains(f.name)
         }?.forEach { dir ->
             try {
                 if (dir.deleteRecursively()) {
@@ -150,8 +163,18 @@ object ArenaManager {
     }
 
     private fun deleteExistingArenas() {
+        val templatePrefix = "${AdminConfig.templateWorldName}_"
+
+        fun isCloneWorldName(name: String): Boolean {
+            if (name.startsWith(templatePrefix)) {
+                return name.removePrefix(templatePrefix).toIntOrNull() != null
+            }
+            // legacy
+            return name.startsWith("cw_game_")
+        }
+
         val mvWorldsToDelete = multiverseCore.mvWorldManager.mvWorlds
-            .filter { it.name.startsWith("cw_game_") }
+            .filter { isCloneWorldName(it.name) }
             .map { it.name }
             .toSet()
 
@@ -169,7 +192,7 @@ object ArenaManager {
         }
 
         val worldContainer = Bukkit.getWorldContainer()
-        worldContainer.listFiles { f -> f.isDirectory && f.name.startsWith("cw_game_") }?.forEach {
+        worldContainer.listFiles { f -> f.isDirectory && isCloneWorldName(f.name) }?.forEach {
             PluginManager.getLogger().info("Удаление оставшейся папки: ${it.name}")
             it.deleteRecursively()
         }

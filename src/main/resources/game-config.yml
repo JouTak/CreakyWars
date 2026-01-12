@@ -47,7 +47,7 @@ day-night-cycle:
   night-duration-ticks: 6000
   eyeblossom-open-percent: 0.5
   creaking-aggro-radius: 60.0
-  creakingBreakSpeed: 10.0
+  creaking-break-speed: 10.0
 
 respawn:
   delay-seconds: 10

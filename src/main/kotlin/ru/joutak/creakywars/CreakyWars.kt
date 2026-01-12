@@ -30,6 +30,8 @@ class CreakyWars : JavaPlugin() {
         initSystems()
         registerEvents()
 
+        CreakingListener.init()
+
         // Player-facing queue/team commands come from MiniGamesAPI (/ready, /unready, /teamselect, ...).
         // Keep only a mode-specific admin command, same pattern as Splatoon (/splatoon ...).
         val creakyCmd = CreakyCommands()
@@ -49,6 +51,7 @@ class CreakyWars : JavaPlugin() {
     }
 
     override fun onDisable() {
+        CreakingListener.shutdown()
         GameManager.shutdownAll()
         ArenaManager.deleteAllArenas()
     }
