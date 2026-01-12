@@ -20,6 +20,7 @@ import ru.joutak.creakywars.core.CoreManager
 import ru.joutak.creakywars.listeners.TeamChestListener
 import ru.joutak.creakywars.resources.ResourceSpawner
 import ru.joutak.creakywars.trading.TraderManager
+import ru.joutak.creakywars.upgrades.BrainStationManager
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.minigames.managers.MatchmakingManager
@@ -385,6 +386,7 @@ class Game(
 
         ResourceSpawner.startSpawning(this)
         TraderManager.spawnTraders(this)
+        BrainStationManager.spawn(this)
 
         dayNightCycle.start()
 
@@ -825,14 +827,31 @@ class Game(
         }
 
         try {
+            BrainStationManager.remove(this)
+        } catch (_: Exception) {
+        }
+
+        try {
             disableListeners()
         } catch (_: Exception) {
         }
 
         if (winnerTeam != null) {
-            broadcastTitle("§6Победа!", "§e${winnerTeam.color}${winnerTeam.name}")
+            val winnerName = "${winnerTeam.color}${winnerTeam.name}"
+
+            // Titles should be personal: winners see "Победа", everyone else sees "Поражение" / neutral.
+            getAudiencePlayers().forEach { player ->
+                val data = getPlayerData(player)
+                when {
+                    data?.team?.id == winnerTeam.id -> MessageUtils.sendTitle(player, "§6Победа!", "§e$winnerName")
+                    spectators.contains(player.uniqueId) || data?.team == null ->
+                        MessageUtils.sendTitle(player, "§eИгра окончена", "§7Победитель: §e$winnerName")
+                    else -> MessageUtils.sendTitle(player, "§cПоражение!", "§7Победитель: §e$winnerName")
+                }
+            }
+
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
-            broadcastMessage("§6§lПОБЕДА: ${winnerTeam.color}${winnerTeam.name}")
+            broadcastMessage("§6§lПОБЕДИТЕЛЬ: $winnerName")
             displayStats()
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
 
@@ -1128,12 +1147,10 @@ class Game(
             }
 
             val fallback = Bukkit.getWorlds().firstOrNull()?.spawnLocation
-            val templatePrefix = "${AdminConfig.templateWorldName}_"
             val target = when {
                 forceLobby -> fallback
                 location.world == null -> fallback
-                location.world!!.name.startsWith(templatePrefix) && location.world!!.name.removePrefix(templatePrefix).toIntOrNull() != null -> fallback
-                location.world!!.name.startsWith("cw_game_") -> fallback // legacy
+                location.world!!.name.startsWith("cw_game_") -> fallback
                 else -> location
             }
 

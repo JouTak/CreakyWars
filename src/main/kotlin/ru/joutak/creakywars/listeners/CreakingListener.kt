@@ -1,11 +1,13 @@
 package ru.joutak.creakywars.listeners
 
 import org.bukkit.Bukkit
+import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Sound
 import org.bukkit.entity.Creaking
+import org.bukkit.entity.Mob
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -20,12 +22,18 @@ import ru.joutak.creakywars.game.Game
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.arenas.ArenaState
 import ru.joutak.creakywars.utils.PluginManager
+import java.lang.reflect.Method
 import java.util.UUID
 
 class CreakingListener : Listener {
 
     companion object {
         private const val AI_PERIOD_TICKS = 2
+
+        // Взгляд учитываем только со стороны текущей цели (ближайшего игрока).
+        private const val LOOK_DISTANCE = 20.0
+        private const val LOOK_DOT_THRESHOLD = 0.82
+
         private var creakingAITask: BukkitTask? = null
 
         private data class StuckState(
@@ -38,6 +46,11 @@ class CreakingListener : Listener {
         // Мы принудительно ведём скрипунов на выбранную цель, не полагаясь на ванильный выбор таргета
         // (у скрипуна он зависит от "кто на него смотрит", что нам не подходит для мини-игры).
         private val desiredTarget = mutableMapOf<UUID, UUID>()
+
+        // Paper Pathfinder (рефлексией, чтобы не привязываться к API-типам)
+        private var pathfinderGetter: Method? = null
+        private var pathfinderMoveTo: Method? = null
+        private var pathfinderStop: Method? = null
 
         private val anchorWorldKey by lazy { NamespacedKey(PluginManager.getPlugin(), "creaking_anchor_world") }
         private val anchorXKey by lazy { NamespacedKey(PluginManager.getPlugin(), "creaking_anchor_x") }
@@ -132,6 +145,63 @@ class CreakingListener : Listener {
             return (baseHardness / GameConfig.creakingBreakSpeed).toLong().coerceAtLeast(1L)
         }
 
+        private fun getChaseSpeed(): Double {
+            // IMPORTANT:
+            // Скорость скрипунов уже регулируется эффектом SPEED (см. DayNightCycle.updateCreakingPhaseBuffs)
+            // через ScenarioConfig.creaking-speed-amplifier.
+            // Если здесь дополнительно масштабировать скорость — получится "двойное ускорение".
+            return 0.9
+        }
+
+        private fun moveTo(creaking: Creaking, target: Location, speed: Double) {
+            val mob = creaking as? Mob ?: return
+            val pf = getPathfinder(mob) ?: return
+            val move = pathfinderMoveTo ?: resolveMoveTo(pf).also { pathfinderMoveTo = it } ?: return
+            runCatching { move.invoke(pf, target, speed) }
+        }
+
+        private fun stopPathfinding(creaking: Creaking) {
+            val mob = creaking as? Mob ?: return
+            val pf = getPathfinder(mob) ?: return
+            val stop = pathfinderStop ?: resolveStop(pf).also { pathfinderStop = it } ?: return
+            runCatching { stop.invoke(pf) }
+        }
+
+        private fun getPathfinder(mob: Mob): Any? {
+            val getter = pathfinderGetter ?: mob.javaClass.methods
+                .firstOrNull { it.name == "getPathfinder" && it.parameterCount == 0 }
+                ?.also { pathfinderGetter = it }
+            return runCatching { getter?.invoke(mob) }.getOrNull()
+        }
+
+        private fun resolveMoveTo(pf: Any): Method? {
+            return pf.javaClass.methods.firstOrNull { m ->
+                m.name == "moveTo" && m.parameterCount == 2 &&
+                    Location::class.java.isAssignableFrom(m.parameterTypes[0]) &&
+                    (m.parameterTypes[1] == java.lang.Double.TYPE || m.parameterTypes[1] == java.lang.Double::class.java)
+            }
+        }
+
+        private fun resolveStop(pf: Any): Method? {
+            return pf.javaClass.methods.firstOrNull { m ->
+                (m.name == "stopPathfinding" || m.name == "stop") && m.parameterCount == 0
+            }
+        }
+
+        private fun isWatchedByTarget(creaking: Creaking, target: Player): Boolean {
+            if (target.world != creaking.world) return false
+            if (target.gameMode == GameMode.SPECTATOR || target.isDead) return false
+
+            val distSq = LOOK_DISTANCE * LOOK_DISTANCE
+            if (target.location.distanceSquared(creaking.location) > distSq) return false
+            if (!target.hasLineOfSight(creaking)) return false
+
+            val creakingEye = creaking.location.clone().add(0.0, 1.5, 0.0)
+            val dir = target.eyeLocation.direction.normalize()
+            val toCreaking = creakingEye.toVector().subtract(target.eyeLocation.toVector()).normalize()
+            return dir.dot(toCreaking) >= LOOK_DOT_THRESHOLD
+        }
+
         private fun updateCreakingAI(creaking: Creaking, game: Game) {
             val aggroRadius = GameConfig.creakingAggroRadius
             val aggroRadiusSq = aggroRadius * aggroRadius
@@ -143,6 +213,8 @@ class CreakingListener : Listener {
             val targetPlayer = game.activePlayers
                 .asSequence()
                 .filter { it.world == creaking.world }
+                // Не агримся на наблюдателей/админов (spectator/creative) и вообще на небоевой gamemode.
+                .filter { it.gameMode == GameMode.SURVIVAL || it.gameMode == GameMode.ADVENTURE }
                 .filter { it.location.distanceSquared(creaking.location) <= aggroRadiusSq }
                 .filter { player ->
                     if (ignoreTeamId == null) return@filter true
@@ -156,7 +228,16 @@ class CreakingListener : Listener {
                 // Всегда ведём на ближайшего, быстро переагриваясь.
                 desiredTarget[creaking.uniqueId] = targetPlayer.uniqueId
                 forceSetTarget(creaking, targetPlayer)
-                applyChaseForce(creaking, targetPlayer.location)
+
+                // Движение только через pathfinder (без толчков/velocity).
+                // Если ближайшая цель смотрит на него — стопаемся.
+                if (isWatchedByTarget(creaking, targetPlayer)) {
+                    stopPathfinding(creaking)
+                    resetStuck(creaking)
+                    return
+                }
+
+                moveTo(creaking, targetPlayer.location, getChaseSpeed())
 
                 handleStuckAndBreak(creaking, targetPlayer.location)
                 sabotageBridges(creaking, targetPlayer.location)
@@ -166,10 +247,11 @@ class CreakingListener : Listener {
             // Нет цели в радиусе — сбрасываем агр, чтобы не "запоминал" прошлую жертву.
             desiredTarget.remove(creaking.uniqueId)
             creaking.target = null
+            stopPathfinding(creaking)
 
             if (anchor != null) {
                 // Если в будущем появится "призыв на базу" — без игроков рядом он будет тянуться к якорю.
-                applyChaseForce(creaking, anchor)
+                moveTo(creaking, anchor, getChaseSpeed())
                 handleStuckAndBreak(creaking, anchor)
                 return
             }
@@ -188,21 +270,14 @@ class CreakingListener : Listener {
             }
         }
 
-        private fun applyChaseForce(creaking: Creaking, target: Location) {
-            // Лёгкий push к цели каждый AI-такт, чтобы:
-            // 1) не зависеть от ванильной "заморозки" когда на него смотрят
-            // 2) быстро перестраивать траекторию при смене цели
-            if (creaking.hasMetadata("breaking")) return
-
-            val v = target.toVector().subtract(creaking.location.toVector())
-            if (v.lengthSquared() < 1.0) return
-
-            val desired = v.normalize().multiply(0.18)
-            // не пихаем вверх/вниз, иначе будет странно на лестницах
-            desired.y = creaking.velocity.y.coerceIn(-0.15, 0.15)
-
-            val vel = creaking.velocity
-            creaking.velocity = vel.multiply(0.35).add(desired)
+        private fun resetStuck(creaking: Creaking) {
+            val state = stuck[creaking.uniqueId]
+            if (state != null) {
+                state.lastLoc = creaking.location.clone()
+                state.notMovedTicks = 0
+            } else {
+                stuck[creaking.uniqueId] = StuckState(creaking.location.clone(), 0)
+            }
         }
 
         private fun handleStuckAndBreak(creaking: Creaking, target: Location) {
@@ -308,6 +383,7 @@ class CreakingListener : Listener {
         if (desiredId == null) {
             // Если наша AI-логика сейчас не выбрала цель — запрещаем скрипуну "держать" старую.
             if (event.target is Player) {
+                event.target = null
                 event.isCancelled = true
             }
             return
@@ -316,6 +392,15 @@ class CreakingListener : Listener {
         val desiredPlayer = Bukkit.getPlayer(desiredId)
         if (desiredPlayer == null || desiredPlayer.world != creaking.world || desiredPlayer.isDead) {
             desiredTarget.remove(creaking.uniqueId)
+            event.isCancelled = true
+            creaking.target = null
+            return
+        }
+
+        // Наблюдатели/админы не должны становиться ванильной целью даже если desiredTarget сломался.
+        if (desiredPlayer.gameMode != GameMode.SURVIVAL && desiredPlayer.gameMode != GameMode.ADVENTURE) {
+            desiredTarget.remove(creaking.uniqueId)
+            event.target = null
             event.isCancelled = true
             creaking.target = null
             return
@@ -340,12 +425,45 @@ class CreakingListener : Listener {
     @EventHandler
     fun onCreakingDamage(event: EntityDamageByEntityEvent) {
         val creaking = event.damager as? Creaking ?: return
+        val victim = event.entity as? Player ?: return
 
         val game = GameManager.getActiveGames().firstOrNull {
-            it.arena.world == creaking.world
+            it.arena.world == creaking.world && it.arena.state == ArenaState.IN_GAME
         } ?: return
 
-        event.isCancelled = false
+        // Скрипун должен бить только текущую "желаемую" цель (ближайшего игрока),
+        // иначе ванильная механика иногда продолжает наносить урон по старой жертве.
+        val desiredId = desiredTarget[creaking.uniqueId]
+        val victimData = game.getPlayerData(victim)
+
+        // Никогда не бьём наблюдателей/внеигровых.
+        if (victim.gameMode != GameMode.SURVIVAL && victim.gameMode != GameMode.ADVENTURE) {
+            event.isCancelled = true
+            return
+        }
+        if (victimData?.isAlive != true) {
+            event.isCancelled = true
+            return
+        }
+
+        // "Спавн за команду": игнорируем урон по запрещённой команде.
+        val ignoreTeamId = getIgnoreTeamId(creaking)
+        if (ignoreTeamId != null && victimData.team?.id == ignoreTeamId) {
+            event.isCancelled = true
+            return
+        }
+
+        if (desiredId == null || victim.uniqueId != desiredId) {
+            event.isCancelled = true
+
+            // Перестраховка: немедленно возвращаем таргет на желаемого.
+            val desiredPlayer = desiredId?.let { Bukkit.getPlayer(it) }
+            if (desiredPlayer != null && desiredPlayer.world == creaking.world && !desiredPlayer.isDead) {
+                forceSetTarget(creaking, desiredPlayer)
+            } else {
+                creaking.target = null
+            }
+        }
     }
 
     @EventHandler
