@@ -100,6 +100,7 @@ object GameManager {
                 player.scoreboard = Bukkit.getScoreboardManager()?.mainScoreboard
                     ?: Bukkit.getScoreboardManager()!!.newScoreboard
                 player.inventory.clear()
+                player.enderChest.clear()
                 player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
                 player.health = player.maxHealth
                 player.foodLevel = 20

@@ -24,6 +24,11 @@ import ru.joutak.creakywars.upgrades.BrainStationManager
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.minigames.managers.MatchmakingManager
+import ru.joutak.minigames.MiniGamesAPI
+import ru.joutak.minigames.results.model.MatchResult
+import ru.joutak.minigames.results.model.PlayerResult
+import ru.joutak.minigames.results.model.TeamResult
+import ru.joutak.minigames.results.model.Metric
 import java.util.UUID
 
 @Suppress("DEPRECATION")
@@ -54,6 +59,17 @@ class Game(
     private val spectators = mutableSetOf<UUID>()
     private val spectatorBackups = mutableMapOf<UUID, SpectatorBackup>()
 
+
+    // Results recording (MiniGamesAPI shared DB)
+    val matchId: java.util.UUID = java.util.UUID.randomUUID()
+    val startedAtMs: Long = System.currentTimeMillis()
+    private var resultsSent: Boolean = false
+
+    private val joinedAtMs = mutableMapOf<java.util.UUID, Long>()
+    private val leftAtMs = mutableMapOf<java.util.UUID, Long>()
+    private val lastKnownName = mutableMapOf<java.util.UUID, String>()
+    private val departedStats = mutableMapOf<java.util.UUID, RecordedPlayerStats>()
+
     val players: List<Player>
         get() = playerData.keys.mapNotNull { Bukkit.getPlayer(it) }
 
@@ -83,6 +99,10 @@ class Game(
         val data = PlayerData(player.uniqueId, team)
         playerData[player.uniqueId] = data
         team.addPlayer(player.uniqueId)
+
+        // Track for results even if player leaves later.
+        lastKnownName[player.uniqueId] = player.name
+        joinedAtMs.putIfAbsent(player.uniqueId, System.currentTimeMillis())
     }
 
     fun getPlayerData(player: Player): PlayerData? {
@@ -363,6 +383,7 @@ class Game(
                     player.health = 20.0
                     player.foodLevel = 20
                     player.inventory.clear()
+                    player.enderChest.clear()
 
                     val playerData = getPlayerData(player)
                     if (playerData != null) {
@@ -855,6 +876,7 @@ class Game(
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
             broadcastMessage("§6§lПОБЕДИТЕЛЬ: $winnerName")
             displayStats()
+            sendResults(winnerTeam)
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
 
             winnerTeam.getOnlinePlayers().forEach { player ->
@@ -867,6 +889,7 @@ class Game(
             broadcastTitle("§eНичья!", "§7Никто не победил")
             broadcastMessage("§7Игра завершилась ничьей!")
             displayStats()
+            sendResults(null)
         }
 
         // Ensure the game always proceeds to full cleanup and removal from GameManager.
@@ -892,6 +915,134 @@ class Game(
             broadcastMessage("  ${index + 1}. $teamColor${player?.name ?: "Unknown"} §7- §e${data.kills} убийств, ${data.finalKills} финальных")
         }
     }
+
+
+    private fun sendResults(winnerTeam: Team?) {
+        if (resultsSent) return
+        resultsSent = true
+
+        val endedAtMs = System.currentTimeMillis()
+        val winnerTeamId = winnerTeam?.id
+
+        val currentSnapshots = playerData.values.map { data ->
+            val uuid = data.uuid
+            val playerName = Bukkit.getPlayer(uuid)?.name ?: lastKnownName[uuid]
+            lastKnownName[uuid] = playerName ?: (lastKnownName[uuid] ?: "Unknown")
+
+            joinedAtMs.putIfAbsent(uuid, startedAtMs)
+
+            RecordedPlayerStats(
+                playerUuid = uuid,
+                playerName = playerName,
+                teamId = data.team?.id,
+                kills = data.kills,
+                deaths = data.deaths,
+                finalKills = data.finalKills,
+                resourcesCollected = data.resourcesCollected,
+                joinedAtMs = joinedAtMs[uuid],
+                leftAtMs = leftAtMs[uuid],
+                aliveAtEnd = data.isAlive,
+            )
+        }
+
+        val allPlayers = LinkedHashMap<UUID, RecordedPlayerStats>()
+        currentSnapshots.forEach { allPlayers[it.playerUuid] = it }
+        departedStats.values.forEach { s -> allPlayers.putIfAbsent(s.playerUuid, s) }
+
+        val participatingTeams = teams.filter { team ->
+            allPlayers.values.any { it.teamId == team.id }
+        }
+
+        val winnerApiTeamId = winnerTeamId?.let { it + 1 }
+
+        val teamResults = participatingTeams.map { team ->
+            val apiTeamId = team.id + 1
+            val teamPlayers = allPlayers.values.filter { it.teamId == team.id }
+
+            val killsTotal = teamPlayers.sumOf { it.kills }.toLong()
+            val deathsTotal = teamPlayers.sumOf { it.deaths }.toLong()
+            val finalKillsTotal = teamPlayers.sumOf { it.finalKills }.toLong()
+            val playersTotal = teamPlayers.size.toLong()
+
+            val isWinner = winnerTeamId != null && team.id == winnerTeamId
+
+            val placement = when {
+                winnerTeamId == null -> null
+                isWinner -> 1
+                participatingTeams.size == 2 -> 2
+                else -> null
+            }
+
+            TeamResult(
+                teamId = apiTeamId,
+                placement = placement,
+                isWinner = isWinner,
+                score = null,
+                metrics = listOf(
+                    Metric.int("players_total", playersTotal),
+                    Metric.int("kills_total", killsTotal),
+                    Metric.int("deaths_total", deathsTotal),
+                    Metric.int("final_kills_total", finalKillsTotal),
+                    Metric.int("core_destroyed", if (team.coreDestroyed) 1 else 0),
+                    Metric.int("lives_remaining", team.livesRemaining.toLong()),
+                    Metric.int("forge_tier", team.forgeTier.toLong()),
+                    Metric.int("protection_level", team.protectionLevel.toLong()),
+                    Metric.int("sharpness_level", team.sharpnessLevel.toLong()),
+                    Metric.int("efficiency_level", team.efficiencyLevel.toLong()),
+                    Metric.int("fast_respawn", if (team.hasFastRespawn) 1 else 0),
+                    Metric.int("trap_active", if (team.trapActive) 1 else 0),
+                ),
+            )
+        }
+
+        val playerResults = allPlayers.values.map { s ->
+            val apiTeamId = s.teamId?.let { it + 1 }
+            val isWinner = winnerApiTeamId != null && apiTeamId == winnerApiTeamId
+
+            PlayerResult(
+                playerUuid = s.playerUuid,
+                playerName = s.playerName,
+                teamId = apiTeamId,
+                isWinner = isWinner,
+                joinedAtMs = s.joinedAtMs,
+                leftAtMs = s.leftAtMs,
+                metrics = listOf(
+                    Metric.int("kills", s.kills.toLong()),
+                    Metric.int("deaths", s.deaths.toLong()),
+                    Metric.int("final_kills", s.finalKills.toLong()),
+                    Metric.int("resources_collected", s.resourcesCollected.toLong()),
+                    Metric.int("alive_end", if (s.aliveAtEnd) 1 else 0),
+                ),
+            )
+        }
+
+        val result = MatchResult(
+            matchId = matchId,
+            startedAtMs = startedAtMs,
+            endedAtMs = endedAtMs,
+            mapKey = arena.mapConfig.mapName,
+            teams = teamResults,
+            players = playerResults,
+        )
+
+        try {
+            MiniGamesAPI.recordMatchResult(result)
+        } catch (_: Throwable) {
+        }
+    }
+
+    private data class RecordedPlayerStats(
+        val playerUuid: UUID,
+        val playerName: String?,
+        val teamId: Int?,
+        val kills: Int,
+        val deaths: Int,
+        val finalKills: Int,
+        val resourcesCollected: Int,
+        val joinedAtMs: Long?,
+        val leftAtMs: Long?,
+        val aliveAtEnd: Boolean,
+    )
 
 
     private fun cleanup() {
@@ -940,6 +1091,7 @@ class Game(
                 try {
                     player.gameMode = GameMode.ADVENTURE
                     player.inventory.clear()
+                    player.enderChest.clear()
                     player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
                     player.health = 20.0
                     player.foodLevel = 20
@@ -1050,6 +1202,27 @@ class Game(
     fun removePlayer(player: Player) {
         val uuid = player.uniqueId
 
+        // Snapshot stats for results before removal.
+        val data = playerData[uuid]
+        if (data != null) {
+            lastKnownName[uuid] = player.name
+            joinedAtMs.putIfAbsent(uuid, startedAtMs)
+            leftAtMs[uuid] = System.currentTimeMillis()
+
+            departedStats[uuid] = RecordedPlayerStats(
+                playerUuid = uuid,
+                playerName = lastKnownName[uuid],
+                teamId = data.team?.id,
+                kills = data.kills,
+                deaths = data.deaths,
+                finalKills = data.finalKills,
+                resourcesCollected = data.resourcesCollected,
+                joinedAtMs = joinedAtMs[uuid],
+                leftAtMs = leftAtMs[uuid],
+                aliveAtEnd = false,
+            )
+        }
+
         playerData.remove(uuid)
 
         respawnTimers[uuid]?.cancel()
@@ -1066,6 +1239,7 @@ class Game(
         }
 
         player.inventory.clear()
+        player.enderChest.clear()
         player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
         player.health = player.maxHealth
         player.foodLevel = 20
