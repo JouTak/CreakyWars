@@ -29,6 +29,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
     implementation("ru.joutak:minigamesapi:2.6.0-72")
+    implementation("org.mariadb.jdbc:mariadb-java-client:3.5.7")
 }
 
 kotlin {
