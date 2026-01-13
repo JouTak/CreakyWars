@@ -67,7 +67,8 @@ object ArenaManager {
         if (template == null) template = Bukkit.getWorld(AdminConfig.templateWorldName)
         val templateWorld = template ?: throw IllegalStateException("Template world not found")
 
-        val worldName = "cw_game_${mapConfigName}_${nextArenaId++}"
+        val arenaId = nextArenaId++
+        val worldName = "cw_game_${mapConfigName}_${arenaId}"
 
         if (!multiverseCore.mvWorldManager.cloneWorld(templateWorld.name, worldName)) {
             throw IllegalStateException("Failed to clone world $worldName")
@@ -78,7 +79,7 @@ object ArenaManager {
 
         val mapConfig = MapConfig.load(mapConfigName)
 
-        val arena = Arena(nextArenaId, world, mapConfig)
+        val arena = Arena(arenaId, world, mapConfig)
         arenas[worldName] = arena
         return arena
     }
