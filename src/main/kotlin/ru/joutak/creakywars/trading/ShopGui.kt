@@ -22,6 +22,7 @@ import org.bukkit.persistence.PersistentDataType
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.Game
 import ru.joutak.creakywars.game.Team
+import ru.joutak.creakywars.game.PlayerLoadout
 import ru.joutak.creakywars.trading.Trade
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
@@ -105,6 +106,11 @@ object ShopGui : Listener {
             var showTrade = true
             if (loadout != null) {
                 when {
+                    tradeResultType == Material.ELYTRA -> {
+                        // Hide if already equipped/in inventory? We only prevent duplicate purchases via click handler,
+                        // but also avoid cluttering the shop for players who already have elytra equipped.
+                        showTrade = player.inventory.chestplate?.type != Material.ELYTRA
+                    }
                     isArmor(tradeResultType) -> {
                         val armorType = getArmorType(tradeResultType)
                         val currentItem = loadout.getStoredArmor(armorType)
@@ -170,6 +176,10 @@ object ShopGui : Listener {
             add("")
             val color = if (hasResources) "§a" else "§c"
             add("§7Цена: $color${requiredAmount}x ${resourceType.displayName}")
+
+            if (tradeResultType == Material.ELYTRA) {
+                add("§cОсторожно: заменяют нагрудник")
+            }
 
             if (team != null && shouldUseTeamColor(tradeResultType)) {
                 add("§7Цвет: ${team.color}${team.name}")
@@ -272,6 +282,13 @@ object ShopGui : Listener {
             val loadout = playerData?.loadout
             val tradeResultType = trade.result.type
 
+            if (tradeResultType == Material.ELYTRA && player.inventory.chestplate?.type == Material.ELYTRA) {
+                MessageUtils.sendMessage(player, "§cУ вас уже экипированы элитры!")
+                player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 1f, 1f)
+                updateInventoryItems(clickedInventory, player, game, currentCategory)
+                return
+            }
+
             val isArmorTrade = isArmor(tradeResultType)
             val isToolTrade = isTool(tradeResultType)
             val isSwordTrade = isSword(tradeResultType)
@@ -314,6 +331,9 @@ object ShopGui : Listener {
             }
 
             when {
+                tradeResultType == Material.ELYTRA && loadout != null -> {
+                    loadout.equipElytra(resultItem, silent = false)
+                }
                 isArmorTrade && loadout != null -> {
                     val armorType = getArmorType(resultItem.type)
 
@@ -329,6 +349,17 @@ object ShopGui : Listener {
                 }
                 isToolTrade && loadout != null -> {
                     loadout.addOrReplaceTool(resultItem)
+                }
+                tradeResultType == Material.ELYTRA -> {
+                    // Fallback for cases where loadout is not available (shouldn't normally happen in a game).
+                    val oldChest = player.inventory.chestplate
+                    player.inventory.chestplate = resultItem
+                    if (oldChest != null && !oldChest.type.isAir) {
+                        val leftover = player.inventory.addItem(oldChest)
+                        if (leftover.isNotEmpty()) {
+                            leftover.values.forEach { player.world.dropItemNaturally(player.location, it) }
+                        }
+                    }
                 }
                 else -> {
                     val leftover = player.inventory.addItem(resultItem)
@@ -419,12 +450,31 @@ object ShopGui : Listener {
             }
         }
 
+        if (item.type == Material.ELYTRA) {
+            PlayerLoadout.markSwapElytra(item)
+            val meta = item.itemMeta
+            if (meta != null) {
+                @Suppress("DEPRECATION")
+                meta.setDisplayName("§e${trade.displayName}")
+
+                val lore = (meta.lore ?: emptyList()).toMutableList()
+                if (lore.none { it.contains("заменяют нагрудник") }) {
+                    lore.add("§cОсторожно: заменяют нагрудник")
+                }
+                lore.add("§7ПКМ: надеть (снимет кирасу)")
+                lore.add("§7Чтобы снять — надень кирасу обратно")
+                meta.lore = lore
+                item.itemMeta = meta
+            }
+        }
+
         return item
     }
 
     private fun createMatchingBoots(leggings: ItemStack): ItemStack {
         val bootsType = when {
             leggings.type.name.startsWith("LEATHER_") -> Material.LEATHER_BOOTS
+            leggings.type.name.startsWith("COPPER_") -> materialByNameOrNull("COPPER_BOOTS") ?: Material.CHAINMAIL_BOOTS
             leggings.type.name.startsWith("CHAINMAIL_") -> Material.CHAINMAIL_BOOTS
             leggings.type.name.startsWith("IRON_") -> Material.IRON_BOOTS
             leggings.type.name.startsWith("GOLDEN_") -> Material.GOLDEN_BOOTS
@@ -514,12 +564,22 @@ object ShopGui : Listener {
 
     private fun getArmorMaterialTier(material: Material): Int = when {
         material.name.startsWith("LEATHER_") -> 1
+        // Copper armor (newer versions). Treat as chainmail-tier by default.
+        material.name.startsWith("COPPER_") -> 2
         material.name.startsWith("CHAINMAIL_") -> 2
         material.name.startsWith("GOLDEN_") -> 3
         material.name.startsWith("IRON_") -> 4
         material.name.startsWith("DIAMOND_") -> 5
         material.name.startsWith("NETHERITE_") -> 6
         else -> 0
+    }
+
+    private fun materialByNameOrNull(name: String): Material? {
+        return try {
+            Material.valueOf(name)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
     }
 
     private fun getToolMaterialTier(material: Material): Int = when {

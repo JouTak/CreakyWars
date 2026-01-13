@@ -2,12 +2,16 @@ package ru.joutak.creakywars.game
 
 import org.bukkit.Color
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
+import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.persistence.PersistentDataType
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.LeatherArmorMeta
 import ru.joutak.creakywars.utils.MessageUtils
+import ru.joutak.creakywars.utils.PluginManager
 
 data class PlayerLoadout(
     val player: Player,
@@ -200,6 +204,63 @@ data class PlayerLoadout(
         }
     }
 
+    fun equipElytra(item: ItemStack, silent: Boolean = false) {
+        val elytra = item.clone()
+        applyTeamEnchants(elytra)
+
+        val oldChest = player.inventory.chestplate
+        player.inventory.chestplate = elytra
+
+        if (oldChest != null && !oldChest.type.isAir) {
+            val leftover = player.inventory.addItem(oldChest)
+            if (leftover.isNotEmpty()) {
+                leftover.values.forEach { player.world.dropItemNaturally(player.location, it) }
+            }
+        }
+
+        if (!silent) {
+            MessageUtils.sendMessage(player, "§aЭлитры экипированы!")
+        }
+    }
+
+
+
+
+    fun equipElytraFromHand(hand: EquipmentSlot, silent: Boolean = false) {
+        val inv = player.inventory
+        if (inv.chestplate?.type == Material.ELYTRA) {
+            if (!silent) {
+                MessageUtils.sendMessage(player, "§eЭлитры уже надеты.")
+            }
+            return
+        }
+
+        val handItem = if (hand == EquipmentSlot.HAND) inv.itemInMainHand else inv.itemInOffHand
+        if (handItem.type != Material.ELYTRA || handItem.amount <= 0) return
+
+        val one = handItem.clone()
+        one.amount = 1
+
+        // Consume one elytra from the used hand.
+        // Use explicit setter methods to avoid Kotlin property quirks across different Bukkit/Paper APIs.
+        if (handItem.amount <= 1) {
+            if (hand == EquipmentSlot.HAND) {
+                inv.setItemInMainHand(ItemStack(Material.AIR))
+            } else {
+                inv.setItemInOffHand(ItemStack(Material.AIR))
+            }
+        } else {
+            handItem.amount = handItem.amount - 1
+            if (hand == EquipmentSlot.HAND) {
+                inv.setItemInMainHand(handItem)
+            } else {
+                inv.setItemInOffHand(handItem)
+            }
+        }
+
+        equipElytra(one, silent = silent)
+    }
+
 
     fun restoreAfterDeath() {
         player.inventory.clear()
@@ -225,7 +286,8 @@ data class PlayerLoadout(
     }
 
     private fun isArmor(material: Material): Boolean =
-        material.name.endsWith("_HELMET") || material.name.endsWith("_CHESTPLATE") ||
+        material == Material.ELYTRA ||
+                material.name.endsWith("_HELMET") || material.name.endsWith("_CHESTPLATE") ||
                 material.name.endsWith("_LEGGINGS") || material.name.endsWith("_BOOTS")
 
     private fun isSword(material: Material): Boolean = material.name.endsWith("_SWORD")
@@ -251,6 +313,42 @@ data class PlayerLoadout(
             "leggings" -> "Поножи"
             "boots" -> "Ботинки"
             else -> "Броня"
+        }
+    }
+
+
+    companion object {
+        private val ELYTRA_SWAP_KEY by lazy {
+            NamespacedKey(PluginManager.getPlugin(), "cw_elytra_swap")
+        }
+
+        fun markSwapElytra(item: ItemStack) {
+            if (item.type != Material.ELYTRA) return
+            val meta = item.itemMeta ?: return
+            meta.persistentDataContainer.set(ELYTRA_SWAP_KEY, PersistentDataType.BYTE, 1)
+            item.itemMeta = meta
+        }
+
+        fun isSwapElytra(item: ItemStack?): Boolean {
+            if (item == null || item.type != Material.ELYTRA) return false
+            val meta = item.itemMeta ?: return true
+
+            if (meta.persistentDataContainer.has(ELYTRA_SWAP_KEY, PersistentDataType.BYTE)) {
+                return true
+            }
+
+            // Backwards compatibility: treat a plain elytra (no name/lore) as a swap-elytra too.
+            val hasName = meta.hasDisplayName()
+            val lore = meta.lore
+            if (!hasName && (lore == null || lore.isEmpty())) {
+                return true
+            }
+
+            val name = if (hasName) meta.displayName else ""
+            if (name.contains("Элитры")) return true
+            if (lore?.any { it.contains("заменяют нагрудник") } == true) return true
+
+            return false
         }
     }
 

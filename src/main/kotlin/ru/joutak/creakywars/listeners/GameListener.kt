@@ -1,6 +1,7 @@
 package ru.joutak.creakywars.listeners
 
 import org.bukkit.GameMode
+import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -32,7 +33,14 @@ class GameListener : Listener {
             return
         }
 
-        if (!GameConfig.allowedBlocks.contains(event.block.type)) {
+        val type = event.block.type
+
+        // Allow players to extinguish fire created by explosions (e.g. fireballs)
+        if (type == Material.FIRE || type == Material.SOUL_FIRE) {
+            return
+        }
+
+        if (!GameConfig.allowedBlocks.contains(type)) {
             event.isCancelled = true
         }
     }
@@ -51,6 +59,13 @@ class GameListener : Listener {
 
         val blockLocation = event.block.location
         val blockType = event.block.type
+
+        // Prevent replacing map blocks by placing into them (e.g. grass/flowers),
+        // otherwise players can destroy protected blocks without breaking.
+        if (!event.blockReplacedState.type.isAir) {
+            event.isCancelled = true
+            return
+        }
 
         if (!GameConfig.allowedBlocks.contains(blockType)) {
             event.isCancelled = true

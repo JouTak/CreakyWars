@@ -1,12 +1,19 @@
 package ru.joutak.creakywars.listeners
 
 import org.bukkit.GameMode
+import org.bukkit.Material
+import org.bukkit.entity.Player
+import org.bukkit.event.block.Action
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
+import org.bukkit.event.inventory.ClickType
+import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.player.*
 import ru.joutak.creakywars.game.GameManager
+import ru.joutak.creakywars.game.PlayerLoadout
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.minigames.managers.MatchmakingManager
 
@@ -102,6 +109,66 @@ class PlayerListener : Listener {
             MessageUtils.sendMessage(player, "§cВы не можете выбросить этот предмет!")
         }
     }
+
+    
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onSwapElytraUse(event: PlayerInteractEvent) {
+        if (event.hand != EquipmentSlot.HAND) return
+        if (event.action != Action.RIGHT_CLICK_AIR && event.action != Action.RIGHT_CLICK_BLOCK) return
+
+        val player = event.player
+        val game = GameManager.getGame(player) ?: return
+        if (game.isSpectator(player.uniqueId)) return
+
+        val item = event.item ?: return
+        if (!PlayerLoadout.isSwapElytra(item)) return
+
+        event.isCancelled = true
+
+        val loadout = game.getPlayerData(player)?.loadout ?: return
+        loadout.equipElytraFromHand(EquipmentSlot.HAND, silent = false)
+        player.updateInventory()
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onSwapElytraInventoryClick(event: InventoryClickEvent) {
+        val player = event.whoClicked as? Player ?: return
+        val game = GameManager.getGame(player) ?: return
+        if (game.isSpectator(player.uniqueId)) return
+
+        val clickedInv = event.clickedInventory ?: return
+        if (clickedInv != player.inventory) return
+
+        val item = event.currentItem ?: return
+        if (!PlayerLoadout.isSwapElytra(item)) return
+
+        // Right-clicking an elytra in the inventory should equip it even if the current chestplate has binding curse.
+        if (event.click != ClickType.RIGHT) return
+
+        val loadout = game.getPlayerData(player)?.loadout ?: return
+        if (player.inventory.chestplate?.type == Material.ELYTRA) return
+
+        event.isCancelled = true
+
+        val slot = event.slot
+        val stack = player.inventory.getItem(slot) ?: return
+        if (stack.type != Material.ELYTRA || stack.amount <= 0) return
+
+        val one = stack.clone()
+        one.amount = 1
+
+        if (stack.amount <= 1) {
+            player.inventory.setItem(slot, null)
+        } else {
+            stack.amount = stack.amount - 1
+            player.inventory.setItem(slot, stack)
+        }
+
+        loadout.equipElytra(one, silent = false)
+        player.updateInventory()
+    }
+
 
     @EventHandler
     fun onPlayerPickupArrow(event: PlayerPickupArrowEvent) {
