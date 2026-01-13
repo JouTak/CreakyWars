@@ -1,61 +1,63 @@
 package ru.joutak.creakywars.upgrades
 
 import org.bukkit.Location
+import org.bukkit.NamespacedKey
 import org.bukkit.entity.ArmorStand
+import org.bukkit.persistence.PersistentDataType
 import ru.joutak.creakywars.game.Game
+import ru.joutak.creakywars.utils.PluginManager
+import java.util.UUID
 
-/**
- * "МОЗГ" — станция прокачки (пока просто подпись над точкой взаимодействия).
- * Позже сюда можно подвязать отдельный GUI перков.
- */
 object BrainStationManager {
 
-    private const val DISPLAY_NAME = "§d§lМОЗГ"
+    private val brainKey by lazy { NamespacedKey(PluginManager.getPlugin(), "cw_brain") }
 
-    private val stands = mutableMapOf<Game, MutableList<ArmorStand>>()
+    // worldName -> armorstand uuids
+    private val spawned = mutableMapOf<String, MutableList<UUID>>()
 
     fun spawn(game: Game) {
-        remove(game)
+        val world = game.arena.world
+        val list = spawned.getOrPut(world.name) { mutableListOf() }
+        if (list.isNotEmpty()) return
 
-        val list = mutableListOf<ArmorStand>()
-        game.arena.mapConfig.upgradeLocations.forEach { spawnLoc ->
-            val base = spawnLoc.toLocation(game.arena.world)
-            val nameLoc = base.clone().add(0.5, 2.2, 0.5)
-            list.add(spawnStand(game, nameLoc, DISPLAY_NAME))
-        }
+        game.arena.mapConfig.upgradeLocations.forEach { locDef ->
+            val base = locDef.toLocation(world)
+            val labelLoc = base.clone().add(0.5, 1.2, 0.5) // 1 block lower than before; upgrade block is 1-block tall
 
-        if (list.isNotEmpty()) {
-            stands[game] = list
+            val stand = world.spawn(labelLoc, ArmorStand::class.java) { asd ->
+                asd.isVisible = false
+                asd.setGravity(false)
+                asd.isInvulnerable = true
+                asd.isCustomNameVisible = true
+                asd.customName = "§d§lМОЗГ"
+                asd.isSmall = true
+                asd.isMarker = true
+                asd.persistentDataContainer.set(brainKey, PersistentDataType.BYTE, 1)
+            }
+
+            list.add(stand.uniqueId)
         }
     }
 
     fun remove(game: Game) {
-        stands.remove(game)?.forEach { stand ->
-            try {
-                stand.remove()
-            } catch (_: Exception) {
+        removeWorld(game.arena.world.name)
+    }
+
+    fun removeWorld(worldName: String) {
+        val ids = spawned.remove(worldName) ?: return
+        val world = PluginManager.getPlugin().server.getWorld(worldName) ?: return
+        ids.forEach { id ->
+            val e = world.getEntity(id)
+            if (e is ArmorStand) {
+                e.remove()
+            } else {
+                e?.remove()
             }
         }
     }
 
-    private fun spawnStand(game: Game, loc: Location, name: String): ArmorStand {
-        return game.arena.world.spawn(loc, ArmorStand::class.java).apply {
-            setGravity(false)
-            isVisible = false
-            isCustomNameVisible = true
-            @Suppress("DEPRECATION")
-            customName = name
-            isMarker = true
-            setAI(false)
-            isPersistent = true
-            isInvulnerable = true
-            isSilent = true
-            canPickupItems = false
-            removeWhenFarAway = false
-            try {
-                isCollidable = false
-            } catch (_: Exception) {
-            }
-        }
+    fun isBrainStand(entity: org.bukkit.entity.Entity): Boolean {
+        val pdc = entity.persistentDataContainer
+        return pdc.has(brainKey, PersistentDataType.BYTE)
     }
 }

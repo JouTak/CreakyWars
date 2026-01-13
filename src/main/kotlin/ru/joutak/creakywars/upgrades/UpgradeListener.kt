@@ -40,11 +40,42 @@ class UpgradeListener : Listener {
             }
 
             if (isUpgradeBlock) {
+                val baseTeamId = resolveUpgradeBaseTeamId(game, clickedLoc)
+                if (baseTeamId != null) {
+                    val team = game.getTeam(player)
+                    if (team == null || team.id != baseTeamId) {
+                        MessageUtils.sendMessage(player, "§cМОЗГ врос в дерево этой базы и не принимает врагов.")
+                        player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.7f)
+                        return
+                    }
+                }
+
                 Bukkit.getScheduler().runTask(PluginManager.getPlugin(), Runnable {
                     UpgradeGui.open(player, game)
                 })
             }
         }
+    }
+
+    private fun resolveUpgradeBaseTeamId(game: ru.joutak.creakywars.game.Game, clickedLoc: org.bukkit.Location): Int? {
+        // Bind an upgrade station to the closest team spawn. If it's too far from any base, treat as neutral.
+        val world = game.arena.world
+        var bestId: Int? = null
+        var bestDist = Double.MAX_VALUE
+
+        game.arena.mapConfig.teamSpawns.forEachIndexed { idx, spawnLoc ->
+            val loc = spawnLoc.toLocation(world)
+            val dx = (loc.blockX - clickedLoc.blockX).toDouble()
+            val dz = (loc.blockZ - clickedLoc.blockZ).toDouble()
+            val dist = dx * dx + dz * dz
+            if (dist < bestDist) {
+                bestDist = dist
+                bestId = idx
+            }
+        }
+
+        // 80 blocks from base is already suspicious; most bases are much closer.
+        return if (bestId != null && bestDist <= 80.0 * 80.0) bestId else null
     }
 
     @EventHandler
