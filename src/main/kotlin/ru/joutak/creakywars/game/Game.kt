@@ -386,6 +386,8 @@ class Game(
 
         ResourceSpawner.startSpawning(this)
         TraderManager.spawnTraders(this)
+
+        // Cosmetic label for the perk station ("МОЗГ") above each base upgrade block.
         BrainStationManager.spawn(this)
 
         dayNightCycle.start()
@@ -899,6 +901,11 @@ class Game(
 
         // Expose to /creakywars games that we're actually cleaning up.
         arena.state = ArenaState.RESETTING
+
+        try {
+            BrainStationManager.removeWorld(arena.world.name)
+        } catch (_: Exception) {
+        }
 
         // Snapshot players before we clear internal maps.
         val playersSnapshot = players.toList()
