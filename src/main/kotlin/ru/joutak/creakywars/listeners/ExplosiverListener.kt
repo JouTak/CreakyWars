@@ -77,7 +77,8 @@ class ExplosivesListener : Listener {
 
         val fireball = player.launchProjectile(Fireball::class.java).apply {
             shooter = player
-            yield = 0.0f
+            // Keep a normal explosion radius; we still filter/break only allowed blocks in our custom handler.
+            yield = 2.0f
             setMetadata("EXPLOSION_CREATOR_UUID", FixedMetadataValue(PluginManager.getPlugin(), player.uniqueId.toString()))
             setMetadata("FIREBALL_START_LOC", FixedMetadataValue(PluginManager.getPlugin(), location))
         }
@@ -91,10 +92,7 @@ class ExplosivesListener : Listener {
         val fireball = event.entity as? Fireball ?: return
         if (!fireball.hasMetadata("EXPLOSION_CREATOR_UUID")) return
 
-        val hitLoc = event.hitBlock?.location?.toCenterLocation() ?: event.hitEntity?.location ?: fireball.location
-
-        fireball.world.createExplosion(hitLoc, 2.0f, false, true)
-        fireball.remove()
+        // Let the entity explode naturally; EntityExplodeEvent is handled below.
     }
 
     private fun startFireballTracking(fireball: Fireball) {
@@ -125,6 +123,15 @@ class ExplosivesListener : Listener {
     fun onEntityExplode(event: EntityExplodeEvent) {
         val game = GameManager.getGame(event.entity.world) ?: return
         if (!ArenaManager.isArena(event.entity.world)) return
+
+        // Wind charges (WIND_CHARGE / BREEZE_WIND_CHARGE) should keep vanilla "wind burst" behaviour.
+        // Our custom explosion logic is only for TNT/Fireball.
+        if (event.entity.type.name.endsWith("WIND_CHARGE")) {
+            // Prevent block damage just in case, but do not replace the effect with a fireball-like explosion.
+            event.blockList().clear()
+            event.yield = 0.0f
+            return
+        }
 
         event.isCancelled = true
         val explosionLocation = event.location
@@ -161,13 +168,20 @@ class ExplosivesListener : Listener {
     ) {
         val allowedBlocks = GameConfig.allowedBlocks
 
-        blocksToBreak.removeIf { block ->
-            !allowedBlocks.contains(block.type)
-        }
-
-        blocksToBreak.forEach { it.type = Material.AIR }
-
         val radius = power * 2.0
+
+        // We only ever break blocks from the "allowed" list (player bridges, etc.).
+        // Vanilla blockList is sometimes "patchy" for explosions in air; for fireballs we want bridges
+        // to be destroyed reliably, so we always scan the radius and union with the provided list.
+        val blocks = LinkedHashSet<Block>(512)
+        blocksToBreak.asSequence()
+            .filter { allowedBlocks.contains(it.type) }
+            .forEach { blocks.add(it) }
+
+        collectAllowedBlocks(location, radius, allowedBlocks).forEach { blocks.add(it) }
+
+        blocks.forEach { it.type = Material.AIR }
+
         val explosionVector = location.toVector()
 
         game.players.forEach { player ->
@@ -208,5 +222,43 @@ class ExplosivesListener : Listener {
 
         location.world.spawnParticle(org.bukkit.Particle.EXPLOSION, location, 1)
         location.world.playSound(location, org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 4.0f, 1.0f)
+    }
+
+    private fun collectAllowedBlocks(center: Location, radius: Double, allowed: Set<Material>): MutableList<Block> {
+        val world = center.world ?: return mutableListOf()
+        val cx = center.x
+        val cy = center.y
+        val cz = center.z
+        val r = radius
+        val r2 = r * r
+
+        val minX = (cx - r).toInt() - 1
+        val maxX = (cx + r).toInt() + 1
+        val minY = (cy - r).toInt() - 1
+        val maxY = (cy + r).toInt() + 1
+        val minZ = (cz - r).toInt() - 1
+        val maxZ = (cz + r).toInt() + 1
+
+        val result = mutableListOf<Block>()
+        for (x in minX..maxX) {
+            for (y in minY..maxY) {
+                for (z in minZ..maxZ) {
+                    val block = world.getBlockAt(x, y, z)
+                    val type = block.type
+                    if (!allowed.contains(type)) continue
+
+                    val bx = x + 0.5
+                    val by = y + 0.5
+                    val bz = z + 0.5
+                    val dx = bx - cx
+                    val dy = by - cy
+                    val dz = bz - cz
+                    if (dx * dx + dy * dy + dz * dz > r2) continue
+
+                    result.add(block)
+                }
+            }
+        }
+        return result
     }
 }
