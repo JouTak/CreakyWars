@@ -27,6 +27,23 @@ import kotlin.math.min
 
 class ExplosivesListener : Listener {
 
+    // Even if these blocks are (accidentally) included in allowed-blocks, explosions must never break them.
+    private val unbreakableByExplosion: Set<Material> = setOf(
+        Material.OBSIDIAN,
+        Material.CRYING_OBSIDIAN,
+        Material.BEDROCK,
+        Material.BARRIER,
+        Material.END_PORTAL_FRAME,
+        Material.COMMAND_BLOCK,
+        Material.REPEATING_COMMAND_BLOCK,
+        Material.CHAIN_COMMAND_BLOCK,
+        Material.STRUCTURE_BLOCK,
+        Material.STRUCTURE_VOID,
+        Material.JIGSAW,
+        // Our core block should not be destroyed by TNT/fireballs.
+        Material.CREAKING_HEART,
+    )
+
     @EventHandler
     fun onTNTPlace(event: BlockPlaceEvent) {
         val player = event.player
@@ -180,7 +197,18 @@ class ExplosivesListener : Listener {
 
         collectAllowedBlocks(location, radius, allowedBlocks).forEach { blocks.add(it) }
 
-        blocks.forEach { it.type = Material.AIR }
+        // Break blocks depending on their (blast) resistance.
+        // This prevents unrealistic behaviour like TNT/fireballs breaking obsidian.
+        val breakable = ArrayList<Block>(blocks.size)
+        for (block in blocks) {
+            val type = block.type
+            val impact = blockImpact(power, block, location, radius)
+            if (impact <= 0.0f) continue
+            if (!canBreakByExplosion(type, impact)) continue
+            breakable.add(block)
+        }
+
+        breakable.forEach { it.type = Material.AIR }
 
         val explosionVector = location.toVector()
 
@@ -222,6 +250,61 @@ class ExplosivesListener : Listener {
 
         location.world.spawnParticle(org.bukkit.Particle.EXPLOSION, location, 1)
         location.world.playSound(location, org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 4.0f, 1.0f)
+    }
+
+    private fun blockImpact(power: Float, block: Block, center: Location, radius: Double): Float {
+        val dist = block.location.toCenterLocation().distance(center)
+        if (dist > radius) return 0.0f
+        val rel = (dist / radius).toFloat().coerceIn(0.0f, 1.0f)
+        return power * (1.0f - rel)
+    }
+
+    private fun canBreakByExplosion(type: Material, impact: Float): Boolean {
+        if (unbreakableByExplosion.contains(type)) return false
+
+        val resistance = getBlastResistance(type)
+        // Scale factor tuned for our custom explosion power values (we treat "power" as 2..N).
+        // The closer to the center, the higher the impact, so dense blocks survive on the edges.
+        val threshold = impact * 10.0f
+        return resistance <= threshold
+    }
+
+    private fun getBlastResistance(type: Material): Float {
+        // Prefer API value if available (Paper/Bukkit provide it on modern versions).
+        val viaApi = runCatching {
+            val method = type.javaClass.methods.firstOrNull { it.name == "getBlastResistance" && it.parameterCount == 0 }
+                ?: return@runCatching null
+            val value = method.invoke(type)
+            when (value) {
+                is Float -> value
+                is Double -> value.toFloat()
+                is Number -> value.toFloat()
+                else -> null
+            }
+        }.getOrNull()
+
+        return viaApi ?: fallbackBlastResistance(type)
+    }
+
+    private fun fallbackBlastResistance(type: Material): Float {
+        val n = type.name
+
+        if (n.contains("OBSIDIAN")) return 1200.0f
+        if (n.contains("ANCIENT_DEBRIS")) return 1200.0f
+
+        // Common soft blocks
+        if (n.contains("GLASS") || n.contains("LEAVES") || n.contains("FLOWER") || n.contains("CARPET")) return 0.3f
+        if (n.contains("WOOL")) return 0.8f
+        if (n.contains("SAND") || n.contains("DIRT") || n.contains("GRAVEL") || n.contains("CLAY")) return 0.5f
+
+        // Common bridge/defence blocks
+        if (n.contains("PLANKS") || n.endsWith("_LOG") || n.endsWith("_WOOD")) return 3.0f
+        if (n.contains("TERRACOTTA") || n.contains("CONCRETE") || n.contains("BRICKS")) return 4.2f
+        if (n.contains("COBBLESTONE") || n.contains("STONE") || n.contains("DEEPSLATE")) return 6.0f
+        if (n.contains("END_STONE")) return 9.0f
+
+        // Reasonable default for "build" blocks
+        return 3.0f
     }
 
     private fun collectAllowedBlocks(center: Location, radius: Double, allowed: Set<Material>): MutableList<Block> {
