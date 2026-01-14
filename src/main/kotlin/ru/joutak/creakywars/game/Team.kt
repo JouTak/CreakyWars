@@ -55,7 +55,14 @@ data class Team(
 
         if (coreDestroyed) {
             val alivePlayers = getAlivePlayers(game)
-            return alivePlayers.isEmpty()
+            if (alivePlayers.isNotEmpty()) {
+                return false
+            }
+
+            // "Last chance" respawn: if players are currently waiting to respawn when the core gets destroyed,
+            // the next respawn must still happen. Do not eliminate the team until those respawns resolve.
+            val hasPendingRespawn = players.any { uuid -> game.hasPendingLastChanceRespawn(uuid) }
+            return !hasPendingRespawn
         }
 
         return false
