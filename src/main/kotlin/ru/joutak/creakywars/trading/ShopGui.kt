@@ -585,11 +585,13 @@ object ShopGui : Listener {
     private fun getToolMaterialTier(material: Material): Int = when {
         material.name.startsWith("WOODEN_") -> 1
         material.name.startsWith("STONE_") -> 2
-        material.name.startsWith("IRON_") -> 3
-        material.name.startsWith("GOLDEN_") -> 4
-        material.name.startsWith("DIAMOND_") -> 5
-        material.name.startsWith("NETHERITE_") -> 6
-        material == Material.SHEARS -> 7
+        // Copper tools/weapons (newer versions). Place between stone and iron.
+        material.name.startsWith("COPPER_") -> 3
+        material.name.startsWith("IRON_") -> 4
+        material.name.startsWith("GOLDEN_") -> 5
+        material.name.startsWith("DIAMOND_") -> 6
+        material.name.startsWith("NETHERITE_") -> 7
+        material == Material.SHEARS -> 8
         else -> 0
     }
 
