@@ -36,6 +36,12 @@ class CreakingListener : Listener {
 
         private var creakingAITask: BukkitTask? = null
 
+        private data class Candidate(
+            val distSq: Double,
+            val creakingId: UUID,
+            val playerId: UUID
+        )
+
         private data class StuckState(
             var lastLoc: Location,
             var notMovedTicks: Int
@@ -64,11 +70,7 @@ class CreakingListener : Listener {
                 creakingAITask = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
                     GameManager.getActiveGames().forEach { game ->
                         if (game.arena.state == ArenaState.IN_GAME) {
-                            game.arena.world.entities
-                                .filterIsInstance<Creaking>()
-                                .forEach { creaking ->
-                                    updateCreakingAI(creaking, game)
-                                }
+                            updateGameCreakingAI(game)
                         }
                     }
                 }, 0L, AI_PERIOD_TICKS.toLong())
@@ -202,61 +204,126 @@ class CreakingListener : Listener {
             return dir.dot(toCreaking) >= LOOK_DOT_THRESHOLD
         }
 
-        private fun updateCreakingAI(creaking: Creaking, game: Game) {
+        private fun updateGameCreakingAI(game: Game) {
+            val world = game.arena.world
+            val creakings = world.entities.filterIsInstance<Creaking>()
+            if (creakings.isEmpty()) return
+
             val aggroRadius = GameConfig.creakingAggroRadius
             val aggroRadiusSq = aggroRadius * aggroRadius
+            val maxPerPlayer = GameConfig.creakingMaxAggroPerPlayer.coerceAtLeast(1)
 
-            val ignoreTeamId = getIgnoreTeamId(creaking)
-
-            val anchor = getAnchor(creaking)
-
-            val targetPlayer = game.activePlayers
+            val eligiblePlayers = game.activePlayers
                 .asSequence()
-                .filter { it.world == creaking.world }
-                // Не агримся на наблюдателей/админов (spectator/creative) и вообще на небоевой gamemode.
+                .filter { it.world == world }
                 .filter { it.gameMode == GameMode.SURVIVAL || it.gameMode == GameMode.ADVENTURE }
-                .filter { it.location.distanceSquared(creaking.location) <= aggroRadiusSq }
-                .filter { player ->
-                    if (ignoreTeamId == null) return@filter true
-                    val teamId = game.getPlayerData(player)?.team?.id
-                    teamId == null || teamId != ignoreTeamId
-                }
-                .minByOrNull { it.location.distanceSquared(creaking.location) }
+                .filter { !it.isDead }
+                .toList()
 
-            if (targetPlayer != null) {
-                // Не доверяем ванильной логике скрипуна (она зависит от "кто на него смотрит").
-                // Всегда ведём на ближайшего, быстро переагриваясь.
-                desiredTarget[creaking.uniqueId] = targetPlayer.uniqueId
-                forceSetTarget(creaking, targetPlayer)
-
-                // Движение только через pathfinder (без толчков/velocity).
-                // Если ближайшая цель смотрит на него — стопаемся.
-                if (isWatchedByTarget(creaking, targetPlayer)) {
+            if (eligiblePlayers.isEmpty()) {
+                creakings.forEach { creaking ->
+                    val anchor = getAnchor(creaking)
+                    desiredTarget.remove(creaking.uniqueId)
+                    creaking.target = null
                     stopPathfinding(creaking)
-                    resetStuck(creaking)
-                    return
+                    creaking.setAI(true)
+
+                    if (anchor != null) {
+                        moveTo(creaking, anchor, getChaseSpeed())
+                        handleStuckAndBreak(creaking, anchor)
+                    } else {
+                        stuck.remove(creaking.uniqueId)
+                    }
                 }
-
-                moveTo(creaking, targetPlayer.location, getChaseSpeed())
-
-                handleStuckAndBreak(creaking, targetPlayer.location)
-                sabotageBridges(creaking, targetPlayer.location)
                 return
             }
 
-            // Нет цели в радиусе — сбрасываем агр, чтобы не "запоминал" прошлую жертву.
-            desiredTarget.remove(creaking.uniqueId)
-            creaking.target = null
-            stopPathfinding(creaking)
+            val playersById = eligiblePlayers.associateBy { it.uniqueId }
+            val teamByPlayer = eligiblePlayers.associate { it.uniqueId to game.getPlayerData(it)?.team?.id }
 
-            if (anchor != null) {
-                // Если в будущем появится "призыв на базу" — без игроков рядом он будет тянуться к якорю.
-                moveTo(creaking, anchor, getChaseSpeed())
-                handleStuckAndBreak(creaking, anchor)
+            val candidates = ArrayList<Candidate>(creakings.size * eligiblePlayers.size)
+            val hasAnyCandidate = HashSet<UUID>()
+
+            creakings.forEach { creaking ->
+                val ignoreTeamId = getIgnoreTeamId(creaking)
+                val cLoc = creaking.location
+
+                eligiblePlayers.forEach { player ->
+                    if (ignoreTeamId != null) {
+                        val teamId = teamByPlayer[player.uniqueId]
+                        if (teamId != null && teamId == ignoreTeamId) return@forEach
+                    }
+
+                    val distSq = player.location.distanceSquared(cLoc)
+                    if (distSq <= aggroRadiusSq) {
+                        candidates.add(Candidate(distSq, creaking.uniqueId, player.uniqueId))
+                        hasAnyCandidate.add(creaking.uniqueId)
+                    }
+                }
+            }
+
+            candidates.sortBy { it.distSq }
+
+            val assigned = HashMap<UUID, UUID>(creakings.size)
+            val counts = HashMap<UUID, Int>(eligiblePlayers.size)
+
+            for (c in candidates) {
+                if (assigned.containsKey(c.creakingId)) continue
+                val cnt = counts[c.playerId] ?: 0
+                if (cnt >= maxPerPlayer) continue
+                assigned[c.creakingId] = c.playerId
+                counts[c.playerId] = cnt + 1
+            }
+
+            creakings.forEach { creaking ->
+                val assignedPlayerId = assigned[creaking.uniqueId]
+                val assignedPlayer = assignedPlayerId?.let { playersById[it] }
+
+                if (assignedPlayer != null) {
+                    updateCreakingChase(creaking, assignedPlayer)
+                } else {
+                    val anchor = getAnchor(creaking)
+
+                    desiredTarget.remove(creaking.uniqueId)
+                    creaking.target = null
+                    stopPathfinding(creaking)
+
+                    if (hasAnyCandidate.contains(creaking.uniqueId)) {
+                        // Есть игроки в радиусе, но слот агра заполнен — лишних замораживаем, чтобы они не "подхватывали" ванильный таргет.
+                        creaking.setAI(false)
+                        creaking.velocity = creaking.velocity.multiply(0.0)
+                        resetStuck(creaking)
+                        return@forEach
+                    }
+
+                    // Никого рядом — можно жить своей жизнью (якорь/простой).
+                    creaking.setAI(true)
+                    if (anchor != null) {
+                        moveTo(creaking, anchor, getChaseSpeed())
+                        handleStuckAndBreak(creaking, anchor)
+                    } else {
+                        stuck.remove(creaking.uniqueId)
+                    }
+                }
+            }
+        }
+
+        private fun updateCreakingChase(creaking: Creaking, targetPlayer: Player) {
+            creaking.setAI(true)
+
+            desiredTarget[creaking.uniqueId] = targetPlayer.uniqueId
+            forceSetTarget(creaking, targetPlayer)
+
+            // Скрипун "замирает" только если на него смотрит его текущая цель.
+            if (isWatchedByTarget(creaking, targetPlayer)) {
+                stopPathfinding(creaking)
+                resetStuck(creaking)
                 return
             }
 
-            stuck.remove(creaking.uniqueId)
+            moveTo(creaking, targetPlayer.location, getChaseSpeed())
+            handleStuckAndBreak(creaking, targetPlayer.location)
+            sabotageBridges(creaking, targetPlayer.location)
         }
 
         private fun forceSetTarget(creaking: Creaking, player: Player) {

@@ -5,6 +5,9 @@ import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.Sound
+import org.bukkit.block.Block
+import org.bukkit.block.BlockFace
+import org.bukkit.block.data.Directional
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.potion.PotionEffect
@@ -491,13 +494,36 @@ class Game(
             if (chestLoc != null) {
                 val block = chestLoc.block
                 block.type = Material.CHEST
+                applyFacing(block, chestLoc.yaw)
                 teamChestListener.addTeamChest(block, team)
             }
         }
 
         arena.mapConfig.enderChestLocations.forEach { spawnLoc ->
             val loc = spawnLoc.toLocation(arena.world)
-            loc.block.type = Material.ENDER_CHEST
+            val block = loc.block
+            block.type = Material.ENDER_CHEST
+            applyFacing(block, loc.yaw)
+        }
+    }
+
+    private fun applyFacing(block: Block, yaw: Float) {
+        val data = block.blockData
+        if (data is Directional) {
+            data.facing = yawToFace(yaw)
+            block.blockData = data
+        }
+    }
+
+    private fun yawToFace(yaw: Float): BlockFace {
+        var rot = yaw % 360f
+        if (rot < 0f) rot += 360f
+
+        return when {
+            rot >= 315f || rot < 45f -> BlockFace.SOUTH
+            rot < 135f -> BlockFace.WEST
+            rot < 225f -> BlockFace.NORTH
+            else -> BlockFace.EAST
         }
     }
 
