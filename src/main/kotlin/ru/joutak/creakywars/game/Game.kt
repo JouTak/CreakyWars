@@ -56,10 +56,8 @@ class Game(
 
     private val respawnTimers = mutableMapOf<UUID, BukkitTask>()
 
-    // If a team core is destroyed while a player is waiting to respawn, they should still
-    // get exactly one 'last chance' respawn (like BedWars).
-    private val awaitingRespawnSetup = mutableSetOf<UUID>()
     private val pendingLastChanceRespawn = mutableSetOf<UUID>()
+    private val awaitingRespawnSetup = mutableSetOf<UUID>()
 
     private val spectators = mutableSetOf<UUID>()
     private val spectatorBackups = mutableMapOf<UUID, SpectatorBackup>()
@@ -200,6 +198,8 @@ class Game(
         if (arena.state != ArenaState.IN_GAME) return false
         if (currentPhaseIndex >= ScenarioConfig.phases.size) return false
 
+        fastForwardToCurrentPhaseEnd()
+
         try {
             endPhase(currentPhaseIndex)
         } catch (_: Exception) {
@@ -211,6 +211,47 @@ class Game(
             currentPhaseIndex = ScenarioConfig.phases.size
         }
         return true
+    }
+
+    private fun fastForwardToCurrentPhaseEnd() {
+        if (arena.state != ArenaState.IN_GAME) return
+        if (currentPhaseIndex < 0 || currentPhaseIndex >= ScenarioConfig.phases.size) return
+
+        val phase = ScenarioConfig.phases[currentPhaseIndex]
+
+        val targetTick = (phase.endAtTick ?: run {
+            val totalTicks = (phase.durationSeconds * 20L).coerceAtLeast(0L)
+            phaseStartTick + totalTicks
+        }).coerceAtLeast(gameTick)
+
+        val delta = (targetTick - gameTick).coerceAtLeast(0L)
+        if (delta <= 0L) return
+
+        // Apply border shrink for the skipped time window (in whole seconds).
+        if (phase.borderShrink) {
+            try {
+                val border = arena.world.worldBorder
+                val steps = (delta / 20L).coerceAtLeast(0L)
+                val shrink = steps.toDouble() * phase.borderShrinkSpeed
+                if (shrink > 0.0) {
+                    border.size = maxOf(phase.borderFinalSize, border.size - shrink)
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        try {
+            dayNightCycle.fastForward(delta)
+        } catch (_: Exception) {
+        }
+
+        gameTick = targetTick
+
+        try {
+            // ensure bossbar looks sane after skip
+            phaseBossBar.updateProgress(0L, 1L)
+        } catch (_: Exception) {
+        }
     }
 
     fun adminSetPhase(index: Int): Boolean {
@@ -577,11 +618,6 @@ class Game(
         val data = getPlayerData(player) ?: return
         val team = data.team ?: return
 
-        // Snapshot: if the core was intact at the moment of death, the next respawn must still happen
-        // even if the core gets destroyed during the respawn countdown ("last chance").
-        val coreIntactAtDeath = !team.coreDestroyed
-        awaitingRespawnSetup.add(player.uniqueId)
-
         data.addDeath()
 
         if (killer != null) {
@@ -596,8 +632,6 @@ class Game(
         val spectatorLocation = org.bukkit.Location(arena.world, 0.0, 75.0, 0.0)
 
         org.bukkit.Bukkit.getScheduler().runTaskLater(ru.joutak.creakywars.utils.PluginManager.getPlugin(), Runnable {
-            awaitingRespawnSetup.remove(player.uniqueId)
-
             if (!player.isOnline) return@Runnable
 
             player.spigot().respawn()
@@ -611,14 +645,7 @@ class Game(
                 return@Runnable
             }
 
-            // Core was intact at death -> guarantee the next respawn as a last chance.
-            if (team.coreDestroyed && coreIntactAtDeath) {
-                pendingLastChanceRespawn.add(player.uniqueId)
-            }
-
-            val hasLastChance = pendingLastChanceRespawn.contains(player.uniqueId)
-
-            if (team.coreDestroyed && !hasLastChance) {
+            if (team.coreDestroyed) {
                 data.isAlive = false
 
                 MessageUtils.sendMessage(player, "§c§lВы выбыли из игры!")
@@ -634,14 +661,10 @@ class Game(
                 return@Runnable
             }
 
-            if (team.canRespawn() || hasLastChance) {
-                if (team.canRespawn()) {
-                    team.decrementLives()
-                }
+            if (team.canRespawn()) {
+                team.decrementLives()
                 startRespawnTimer(player, spectatorLocation)
             } else {
-                pendingLastChanceRespawn.remove(player.uniqueId)
-
                 data.isAlive = false
                 MessageUtils.sendMessage(player, "§c§lВы выбыли из игры!")
                 player.sendTitle("§cВЫ ПОГИБЛИ", "§7Жизни закончились", 10, 70, 20)
@@ -706,11 +729,14 @@ class Game(
         }
     }
 
+
     private fun startRespawnTimer(player: Player, deathLocation: org.bukkit.Location) {
         respawnTimers[player.uniqueId]?.cancel()
 
         val data = getPlayerData(player) ?: return
         val team = data.team ?: return
+
+        awaitingRespawnSetup.add(player.uniqueId)
 
         var delaySeconds = GameConfig.respawnDelaySeconds
 
@@ -727,11 +753,12 @@ class Game(
         var remainingSeconds = delaySeconds
 
         val timerTask = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
-            val hasLastChance = pendingLastChanceRespawn.contains(player.uniqueId)
+            val uuid = player.uniqueId
+            val hasLastChance = pendingLastChanceRespawn.contains(uuid)
 
             if (team.coreDestroyed && !hasLastChance) {
-                respawnTimers[player.uniqueId]?.cancel()
-                respawnTimers.remove(player.uniqueId)
+                respawnTimers[uuid]?.cancel()
+                respawnTimers.remove(uuid)
 
                 data.isAlive = false
                 player.gameMode = GameMode.SPECTATOR
@@ -742,8 +769,8 @@ class Game(
             }
 
             if (!team.canRespawn() && !hasLastChance) {
-                respawnTimers[player.uniqueId]?.cancel()
-                respawnTimers.remove(player.uniqueId)
+                respawnTimers[uuid]?.cancel()
+                respawnTimers.remove(uuid)
 
                 data.isAlive = false
                 player.gameMode = GameMode.SPECTATOR
@@ -751,13 +778,11 @@ class Game(
                 MessageUtils.sendMessage(player, "§c§lУ команды закончились жизни!")
                 return@Runnable
             }
-
             if (remainingSeconds <= 0) {
-                respawnTimers[player.uniqueId]?.cancel()
-                respawnTimers.remove(player.uniqueId)
+                respawnTimers[uuid]?.cancel()
+                respawnTimers.remove(uuid)
 
-                // Last chance is consumed on the respawn itself.
-                pendingLastChanceRespawn.remove(player.uniqueId)
+                pendingLastChanceRespawn.remove(uuid)
                 respawnPlayer(player)
                 return@Runnable
             }
@@ -773,6 +798,8 @@ class Game(
         }, 0L, 20L)
 
         respawnTimers[player.uniqueId] = timerTask
+
+        awaitingRespawnSetup.remove(player.uniqueId)
     }
 
 
@@ -865,8 +892,8 @@ class Game(
         }
         respawnTimers.clear()
 
-        awaitingRespawnSetup.clear()
         pendingLastChanceRespawn.clear()
+        awaitingRespawnSetup.clear()
 
         try {
             dayNightCycle.stop()
@@ -1159,6 +1186,8 @@ class Game(
             } catch (_: Exception) {
             }
 
+            pendingLastChanceRespawn.clear()
+            awaitingRespawnSetup.clear()
             playerData.clear()
             spectators.clear()
             spectatorBackups.clear()
@@ -1203,20 +1232,20 @@ class Game(
             broadcastTitle("§c${team.name}", "§eядро уничтожено!")
         }
 
-        // Players who are currently waiting to respawn should still get exactly one respawn as a "last chance".
-        team.players.forEach { uuid ->
-            if (respawnTimers.containsKey(uuid) || awaitingRespawnSetup.contains(uuid)) {
-                pendingLastChanceRespawn.add(uuid)
-            }
+        val pendingNow = team.players.filter { uuid ->
+            respawnTimers.containsKey(uuid) || awaitingRespawnSetup.contains(uuid)
+        }.toSet()
+        if (pendingNow.isNotEmpty()) {
+            pendingLastChanceRespawn.addAll(pendingNow)
         }
 
         team.getOnlinePlayers().forEach { player ->
             val data = getPlayerData(player)
 
-            val isWaitingRespawn = respawnTimers.containsKey(player.uniqueId) || awaitingRespawnSetup.contains(player.uniqueId)
-            if (isWaitingRespawn) {
+            val uuid = player.uniqueId
+            if (pendingNow.contains(uuid)) {
                 MessageUtils.sendMessage(player, "§c§l⚠ ВАШЕ ЯДРО УНИЧТОЖЕНО!")
-                MessageUtils.sendMessage(player, "§eНо вы возродитесь §6последний раз§e!")
+                MessageUtils.sendMessage(player, "§6Это ваш последний респавн.")
                 player.playSound(player.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 0.8f)
                 return@forEach
             }
@@ -1229,6 +1258,12 @@ class Game(
                 data?.isAlive = false
                 player.gameMode = GameMode.SPECTATOR
                 MessageUtils.sendMessage(player, "§c§lВы выбыли из игры!")
+            }
+        }
+        team.players.forEach { uuid ->
+            if (!pendingNow.contains(uuid)) {
+                respawnTimers[uuid]?.cancel()
+                respawnTimers.remove(uuid)
             }
         }
 
@@ -1272,8 +1307,8 @@ class Game(
         respawnTimers[uuid]?.cancel()
         respawnTimers.remove(uuid)
 
-        awaitingRespawnSetup.remove(uuid)
         pendingLastChanceRespawn.remove(uuid)
+        awaitingRespawnSetup.remove(uuid)
 
         val team = teams.firstOrNull { it.hasPlayer(uuid) }
         team?.removePlayer(uuid)

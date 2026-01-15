@@ -283,6 +283,56 @@ class CreakyCommands : CommandExecutor, TabCompleter {
                 }
             }
 
+            "give" -> {
+                if (!hasAdmin(sender)) {
+                    sender.sendMessage("§cНет прав.")
+                    return true
+                }
+
+                if (args.size < 2) {
+                    sender.sendMessage("§cИспользование: /creakywars give <resourceId> [amount] [player]")
+                    sender.sendMessage("§7Доступные ресурсы: §f${GameConfig.resourceTypes.keys.sorted().joinToString(", ")}")
+                    return true
+                }
+
+                val idToken = args[1]
+                val resource = GameConfig.resourceTypes.entries.firstOrNull { it.key.equals(idToken, ignoreCase = true) }?.value
+                if (resource == null) {
+                    sender.sendMessage("§cНеизвестный ресурс: §f$idToken")
+                    sender.sendMessage("§7Доступные ресурсы: §f${GameConfig.resourceTypes.keys.sorted().joinToString(", ")}")
+                    return true
+                }
+
+                val amount = args.getOrNull(2)?.toIntOrNull()?.coerceAtLeast(1) ?: 16
+
+                val target: Player? = when {
+                    sender is Player && args.size < 4 -> sender
+                    else -> Bukkit.getPlayerExact(args.getOrNull(3) ?: "")
+                }
+
+                if (target == null) {
+                    sender.sendMessage("§cИгрок не найден. Использование: /creakywars give <resourceId> [amount] <player>")
+                    return true
+                }
+
+                var remaining = amount
+                val maxStack = resource.material.maxStackSize.coerceAtLeast(1)
+
+                while (remaining > 0) {
+                    val stackAmount = minOf(maxStack, remaining)
+                    val item = resource.createItemStack(stackAmount)
+
+                    val leftover = target.inventory.addItem(item)
+                    if (leftover.isNotEmpty()) {
+                        leftover.values.forEach { target.world.dropItemNaturally(target.location, it) }
+                    }
+
+                    remaining -= stackAmount
+                }
+
+                sender.sendMessage("§aОк. Выдано §e$amount§a x §f${resource.displayName}§a игроку §e${target.name}§a.")
+            }
+
             else -> sendHelp(sender)
         }
 
@@ -306,6 +356,7 @@ class CreakyCommands : CommandExecutor, TabCompleter {
             "spectate",
             "unspectate",
             "broadcast",
+            "give",
             "startnow",
             "end",
             "phase",
@@ -318,6 +369,10 @@ class CreakyCommands : CommandExecutor, TabCompleter {
 
         if (args.size == 2) {
             return when (args[0].lowercase()) {
+                "give" -> GameConfig.resourceTypes.keys
+                    .sorted()
+                    .filter { it.startsWith(args[1], ignoreCase = true) }
+                    .toMutableList()
                 "spectate", "spec", "status", "games", "end", "startnow", "forcestart", "broadcast" -> {
                     buildGameTargets().filter { it.startsWith(args[1], ignoreCase = true) }.toMutableList()
                 }
@@ -329,6 +384,18 @@ class CreakyCommands : CommandExecutor, TabCompleter {
                     .toMutableList()
                 else -> mutableListOf()
             }
+        }
+
+        if (args.size == 3 && args[0].equals("give", ignoreCase = true)) {
+            return listOf("1", "4", "8", "16", "32", "64")
+                .filter { it.startsWith(args[2], ignoreCase = true) }
+                .toMutableList()
+        }
+
+        if (args.size == 4 && args[0].equals("give", ignoreCase = true)) {
+            return Bukkit.getOnlinePlayers().map { it.name }
+                .filter { it.startsWith(args[3], ignoreCase = true) }
+                .toMutableList()
         }
 
         if (args.size == 3 && args[0].equals("phase", ignoreCase = true)) {
@@ -387,6 +454,7 @@ class CreakyCommands : CommandExecutor, TabCompleter {
         sender.sendMessage("§e/creakywars spectate <id|here> §7- Наблюдать с UI")
         sender.sendMessage("§e/creakywars unspectate §7- Выйти из наблюдения")
         sender.sendMessage("§e/creakywars broadcast <all|id|here> <msg...> §7- Сообщение в матч")
+        sender.sendMessage("§e/creakywars give <resourceId> [amount] [player] §7- Выдать игровой ресурс")
         sender.sendMessage("§e/creakywars reload §7- Перезагрузить конфиги (§cop§7)")
         sender.sendMessage("§cОпасное (§cop§7): §e/creakywars end/startnow/phase/arena cleanup")
         sender.sendMessage("§7Игрокам: §f/ready§7, §f/unready§7, §f/teamselect")

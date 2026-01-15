@@ -38,6 +38,85 @@ class DayNightCycle(private val game: Game) {
     private val WAVE_DURATION = 100L
     private var waveTask: BukkitTask? = null
 
+    /**
+     * Admin/testing helper: fast-forward the internal day/night clock without running per-tick side effects.
+     * Used by /cw phase skip so phases and night events don't desync.
+     */
+    fun fastForward(ticks: Long) {
+        if (ticks <= 0L) return
+        if (cycleTask == null) return
+
+        val dayDur = GameConfig.dayDurationTicks.coerceAtLeast(1L)
+        val nightDur = GameConfig.nightDurationTicks.coerceAtLeast(1L)
+
+        var remaining = ticks
+        var night = isNight
+        var ct = currentTicks.coerceAtLeast(0L)
+
+        // Compute final cycle state (night/day + ticks within the current segment).
+        while (remaining > 0L) {
+            val dur = if (night) nightDur else dayDur
+            val rem = (dur - ct).coerceAtLeast(0L)
+            if (rem == 0L) {
+                // Safety against bad state.
+                night = !night
+                ct = 0L
+                continue
+            }
+
+            if (remaining < rem) {
+                ct += remaining
+                remaining = 0L
+            } else {
+                remaining -= rem
+                night = !night
+                ct = 0L
+            }
+        }
+
+        // Apply final state with minimal side effects.
+        if (night != isNight) {
+            try {
+                waveTask?.cancel()
+            } catch (_: Exception) {
+            }
+            waveTask = null
+
+            if (night) {
+                // Entering night: schedule eyeblossoms + spawn creakings.
+                try {
+                    startNight()
+                } catch (_: Exception) {
+                }
+            } else {
+                // Entering day: close flowers and despawn creakings (no cleansing wave during fast-forward).
+                try {
+                    closeEyeblossoms()
+                } catch (_: Exception) {
+                }
+                try {
+                    stopCreakingCheck()
+                } catch (_: Exception) {
+                }
+                try {
+                    despawnAllCreakings()
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        isNight = night
+        currentTicks = ct
+
+        updateWorldTime()
+        if (isNight) {
+            try {
+                updateEyeblossoms()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     data class EyeblossomState(
         var isOpen: Boolean = false,
         var openAt: Long = 0L,

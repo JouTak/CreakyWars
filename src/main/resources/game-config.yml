@@ -47,6 +47,9 @@ day-night-cycle:
   night-duration-ticks: 6000
   eyeblossom-open-percent: 0.5
   creaking-aggro-radius: 60.0
+  # Максимальное число Скрипунов, которые могут одновременно агриться на одного игрока
+  # (остальные будут игнорировать "переполненного" игрока и выбирать других)
+  creaking-max-per-player: 2
   creaking-break-speed: 10.0
 
 respawn:

@@ -27,6 +27,7 @@ object GameConfig {
     var respawnSpectatorMode: Boolean = true
     var creakingAggroRadius: Double = 60.0
     var creakingBreakSpeed: Double = 1.0
+    var creakingMaxAggroPerPlayer: Int = 2
 
     var protectionRadius: Double = 3.0
     var voidKillHeight: Int = 50
@@ -99,6 +100,7 @@ object GameConfig {
         nightDurationTicks = config.getLong("day-night-cycle.night-duration-ticks", 6000L)
         eyeblossomOpenPercent = config.getDouble("day-night-cycle.eyeblossom-open-percent", 0.5)
         creakingAggroRadius = config.getDouble("day-night-cycle.creaking-aggro-radius", 60.0)
+        creakingMaxAggroPerPlayer = config.getInt("day-night-cycle.creaking-max-per-player", 2).coerceAtLeast(1)
         creakingBreakSpeed = if (config.contains("day-night-cycle.creaking-break-speed")) {
             config.getDouble("day-night-cycle.creaking-break-speed", 1.5)
         } else {
