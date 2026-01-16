@@ -31,6 +31,7 @@ import java.util.logging.Level
 
 object ShopGui : Listener {
     private val openInventories = mutableMapOf<UUID, Pair<Game, String>>()
+    private val switchingCategory = mutableSetOf<UUID>()
 
     private val TRADE_ID_KEY = NamespacedKey(PluginManager.getPlugin(), "trade_id")
     private val CATEGORY_KEY = NamespacedKey(PluginManager.getPlugin(), "category_id")
@@ -63,14 +64,27 @@ object ShopGui : Listener {
 
     fun init() {}
 
-    fun open(player: Player, game: Game) {
-        val category = "blocks"
-        val inventory = Bukkit.createInventory(null, 54, "$MENU_TITLE_PREFIX - ${categories[category]}")
+    private fun openWithCategory(player: Player, game: Game, category: String) {
+        val title = "$MENU_TITLE_PREFIX - ${categories[category] ?: "§7?"}"
+        val inventory = Bukkit.createInventory(null, 54, title)
 
-        openInventories[player.uniqueId] = Pair(game, category)
         updateInventoryItems(inventory, player, game, category)
 
+        val uuid = player.uniqueId
+        switchingCategory.add(uuid)
+        openInventories[uuid] = Pair(game, category)
         player.openInventory(inventory)
+
+        // NOTE: openInventory closes previous view -> InventoryCloseEvent will fire.
+        // Ensure mapping survives switching.
+        Bukkit.getScheduler().runTask(PluginManager.getPlugin(), Runnable {
+            switchingCategory.remove(uuid)
+            openInventories[uuid] = Pair(game, category)
+        })
+    }
+
+    fun open(player: Player, game: Game) {
+        openWithCategory(player, game, "blocks")
     }
 
     private fun updateInventoryItems(inventory: Inventory, player: Player, game: Game, category: String) {
@@ -266,8 +280,7 @@ object ShopGui : Listener {
         meta.persistentDataContainer.get(CATEGORY_KEY, PersistentDataType.STRING)?.let { newCategory ->
             if (newCategory != currentCategory) {
                 player.playSound(player.location, Sound.UI_BUTTON_CLICK, 1f, 1f)
-                openInventories[player.uniqueId] = Pair(game, newCategory)
-                updateInventoryItems(clickedInventory, player, game, newCategory)
+                openWithCategory(player, game, newCategory)
             }
             return
         }
@@ -383,12 +396,16 @@ object ShopGui : Listener {
 
     @EventHandler
     fun onInventoryClose(event: InventoryCloseEvent) {
-        openInventories.remove(event.player.uniqueId)
+        val uuid = event.player.uniqueId
+        if (switchingCategory.contains(uuid)) return
+        openInventories.remove(uuid)
     }
 
     @EventHandler
     fun onPlayerQuit(event: PlayerQuitEvent) {
-        openInventories.remove(event.player.uniqueId)
+        val uuid = event.player.uniqueId
+        switchingCategory.remove(uuid)
+        openInventories.remove(uuid)
     }
 
     private fun createPurchasedItem(trade: Trade, team: Team?): ItemStack {
