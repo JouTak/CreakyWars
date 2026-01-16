@@ -27,6 +27,8 @@ import ru.joutak.creakywars.upgrades.BrainStationManager
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.minigames.managers.MatchmakingManager
+import ru.joutak.minigames.ui.LobbyScoreboardManager
+import ru.joutak.minigames.ui.QueueBossBarManager
 import ru.joutak.minigames.MiniGamesAPI
 import ru.joutak.minigames.results.model.MatchResult
 import ru.joutak.minigames.results.model.PlayerResult
@@ -120,6 +122,10 @@ class Game(
     }
 
     fun isSpectator(uuid: UUID): Boolean = spectators.contains(uuid)
+
+    fun isAwaitingRespawn(uuid: UUID): Boolean {
+        return respawnTimers.containsKey(uuid) || pendingLastChanceRespawn.contains(uuid) || awaitingRespawnSetup.contains(uuid)
+    }
 
     fun hasPendingLastChanceRespawn(uuid: UUID): Boolean {
         return pendingLastChanceRespawn.contains(uuid) || awaitingRespawnSetup.contains(uuid)
@@ -299,6 +305,16 @@ class Game(
         } catch (_: Exception) {
         }
 
+        // Remove lobby UI instantly (MiniGamesAPI) before attaching match UI.
+        try {
+            QueueBossBarManager.remove(player)
+        } catch (_: Exception) {
+        }
+        try {
+            LobbyScoreboardManager.remove(player)
+        } catch (_: Exception) {
+        }
+
         spectators.add(uuid)
 
         // Safe spectator state
@@ -324,7 +340,7 @@ class Game(
 
         MessageUtils.sendMessage(
             player,
-            "§aВы наблюдаете за игрой §e#${arena.id}§a на карте §e${arena.mapConfig.displayName}§a."
+            "§aВы наблюдаете за игрой §e#${arena.id}§a."
         )
         return true
     }
@@ -507,6 +523,8 @@ class Game(
         }
     }
 
+
+
     private fun applyFacing(block: Block, yaw: Float) {
         val data = block.blockData
         if (data is Directional) {
@@ -579,8 +597,7 @@ class Game(
             }
         }
 
-        if (gameTick % 20L == 0L) {
-            checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
+        if (gameTick % 20L == 0L) {            checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
         }
     }
 
@@ -594,6 +611,8 @@ class Game(
         ResourceSpawner.setMultiplier(this, phase.resourceMultiplier)
 
         phaseBossBar.create(phaseIndex)
+
+        teamScoreboard.update()
 
         setPlayersGlowing(false)
         if (phase.glowPlayers) {

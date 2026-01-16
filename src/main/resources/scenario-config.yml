@@ -15,6 +15,10 @@ phases:
     creaking-speed-amplifier: 0
     glow-players: false
 
+    # Bad weather ceiling: if enabled, players above this Y will be killed.
+    bad-weather-enabled: false
+    bad-weather-kill-height: 320
+
     start-message: "Игра началась! Собирайте ресурсы и защищайте свое ядро!"
     end-message: "Фаза 1 завершена!"
 
@@ -31,6 +35,10 @@ phases:
 
     creaking-speed-amplifier: 0
     glow-players: false
+
+    # Bad weather ceiling: if enabled, players above this Y will be killed.
+    bad-weather-enabled: false
+    bad-weather-kill-height: 320
 
     start-message: "§6§lФАЗА 2! §eНа центральном острове впервые появились глазалии, а остальные ресурсы спавнятся в 1.5 раза быстрее!"
     end-message: "Фаза 2 завершена!"
@@ -49,6 +57,10 @@ phases:
     creaking-speed-amplifier: 1
     glow-players: false
 
+    # Bad weather ceiling: if enabled, players above this Y will be killed.
+    bad-weather-enabled: false
+    bad-weather-kill-height: 320
+
     start-message: "§c§lФАЗА 3! §eСкрипуны усилены!"
     end-message: "Фаза 3 завершена!"
 
@@ -66,6 +78,10 @@ phases:
     creaking-speed-amplifier: 1
     glow-players: false
 
+    # Bad weather ceiling: if enabled, players above this Y will be killed.
+    bad-weather-enabled: false
+    bad-weather-kill-height: 320
+
     start-message: "§c§lФАЗА 4! §eВозрождение отключено!"
     end-message: "Фаза 4 завершена!"
 
@@ -82,6 +98,10 @@ phases:
 
     creaking-speed-amplifier: 2
     glow-players: true
+
+    # Bad weather ceiling: if enabled, players above this Y will be killed.
+    bad-weather-enabled: false
+    bad-weather-kill-height: 320
 
     start-message: "§4§lФИНАЛ! §eГраница мира сужается!"
     end-message: "Игра завершена!"
