@@ -212,6 +212,7 @@ class CreakingListener : Listener {
             val aggroRadius = GameConfig.creakingAggroRadius
             val aggroRadiusSq = aggroRadius * aggroRadius
             val maxPerPlayer = GameConfig.creakingMaxAggroPerPlayer.coerceAtLeast(1)
+            val voidKillY = GameConfig.voidKillHeight.toDouble()
 
             val eligiblePlayers = game.activePlayers
                 .asSequence()
@@ -245,6 +246,24 @@ class CreakingListener : Listener {
             val hasAnyCandidate = HashSet<UUID>()
 
             creakings.forEach { creaking ->
+                // Если скрипуна скинули с карты, он не должен "улетать в вечность" — возвращаем на якорь
+                // на том же пороге, что и void-kill для игроков.
+                if (creaking.location.y <= voidKillY) {
+                    val anchor = getAnchor(creaking)
+                    desiredTarget.remove(creaking.uniqueId)
+                    creaking.target = null
+                    stopPathfinding(creaking)
+                    creaking.setAI(true)
+                    creaking.velocity = creaking.velocity.multiply(0.0)
+                    creaking.fallDistance = 0f
+                    resetStuck(creaking)
+
+                    if (anchor != null && anchor.world == creaking.world) {
+                        creaking.teleport(anchor)
+                    }
+                    return@forEach
+                }
+
                 val ignoreTeamId = getIgnoreTeamId(creaking)
                 val cLoc = creaking.location
 

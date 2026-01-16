@@ -14,6 +14,7 @@ import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.creakywars.utils.SpawnLocation
 import kotlin.math.cos
 import kotlin.math.sin
+import ru.joutak.creakywars.listeners.CreakingListener
 
 @Suppress("DEPRECATION", "SameParameterValue")
 class DayNightCycle(private val game: Game) {
@@ -457,6 +458,9 @@ class DayNightCycle(private val game: Game) {
                 entity.addPotionEffect(
                     PotionEffect(PotionEffectType.STRENGTH, Int.MAX_VALUE, 0, false, false)
                 )
+
+                // Якорь нужен для возврата скрипуна на точку возрождения (например, если его скинули с карты).
+                CreakingListener.setAnchor(entity, location)
 
                 PluginManager.getLogger().info("[Арена #${game.arena.id}] Скрипун заспавнен в ${spawnLoc.x}, ${spawnLoc.y}, ${spawnLoc.z}")
             }
