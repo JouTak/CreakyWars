@@ -16,6 +16,7 @@ import org.bukkit.event.player.PlayerMoveEvent
 import ru.joutak.creakywars.arenas.ArenaManager
 import ru.joutak.creakywars.arenas.ArenaState
 import ru.joutak.creakywars.config.GameConfig
+import ru.joutak.creakywars.config.ScenarioConfig
 import ru.joutak.creakywars.game.GameManager
 
 @Suppress("DEPRECATION")
@@ -123,8 +124,19 @@ class GameListener : Listener {
 
         if (game.arena.state != ArenaState.IN_GAME) return
 
-        if (player.gameMode == GameMode.SURVIVAL && player.location.y < GameConfig.voidKillHeight) {
-            player.health = 0.0
+        if (player.gameMode == GameMode.SURVIVAL) {
+            if (player.location.y < GameConfig.voidKillHeight) {
+                player.health = 0.0
+                return
+            }
+
+            val phaseIndex = game.getCurrentPhaseIndex()
+            if (phaseIndex >= 0 && phaseIndex < ScenarioConfig.phases.size) {
+                val phase = ScenarioConfig.phases[phaseIndex]
+                if (phase.badWeatherEnabled && player.location.y > phase.badWeatherKillHeight.toDouble()) {
+                    player.health = 0.0
+                }
+            }
         }
     }
 

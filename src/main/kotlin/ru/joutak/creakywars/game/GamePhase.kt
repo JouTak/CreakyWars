@@ -10,6 +10,11 @@ data class GamePhase(
     val borderShrinkSpeed: Double,
     val borderFinalSize: Double,
     val creakingSpeedAmplifier: Int,
+    /**
+     * Bad weather ceiling: if enabled, players above [badWeatherKillHeight] will be killed.
+     */
+    val badWeatherEnabled: Boolean,
+    val badWeatherKillHeight: Int,
     val glowPlayers: Boolean,
     val startMessage: String,
     val endMessage: String

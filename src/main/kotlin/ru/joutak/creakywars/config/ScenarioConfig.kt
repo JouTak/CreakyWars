@@ -32,6 +32,8 @@ object ScenarioConfig {
 
         val phasesSection = config.getConfigurationSection("phases") ?: return
 
+        var dirty = false
+
         for (key in phasesSection.getKeys(false)) {
             val section = phasesSection.getConfigurationSection(key) ?: continue
 
@@ -59,6 +61,19 @@ object ScenarioConfig {
             // New: Glow all players on this phase
             val glowPlayers = section.getBoolean("glow-players", false)
 
+            // New: Bad weather ceiling (kills players above a certain Y)
+            if (!section.contains("bad-weather-enabled")) {
+                section.set("bad-weather-enabled", false)
+                dirty = true
+            }
+            if (!section.contains("bad-weather-kill-height")) {
+                section.set("bad-weather-kill-height", 320)
+                dirty = true
+            }
+
+            val badWeatherEnabled = section.getBoolean("bad-weather-enabled", false)
+            val badWeatherKillHeight = section.getInt("bad-weather-kill-height", 320)
+
             val startMessage = section.getString("start-message", "")!!
             val endMessage = section.getString("end-message", "")!!
 
@@ -73,11 +88,20 @@ object ScenarioConfig {
                     borderShrinkSpeed = borderShrinkSpeed,
                     borderFinalSize = borderFinalSize,
                     creakingSpeedAmplifier = creakingSpeedAmplifier,
+                    badWeatherEnabled = badWeatherEnabled,
+                    badWeatherKillHeight = badWeatherKillHeight,
                     glowPlayers = glowPlayers,
                     startMessage = startMessage,
                     endMessage = endMessage
                 )
             )
+        }
+
+        if (dirty) {
+            try {
+                (config as? YamlConfiguration)?.save(file)
+            } catch (_: Exception) {
+            }
         }
 
         // Keep existing behavior: phases are expected to have names like "Фаза 1", "Фаза 2"...
