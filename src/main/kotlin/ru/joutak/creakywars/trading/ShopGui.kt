@@ -149,9 +149,7 @@ object ShopGui : Listener {
 
                     isSword(tradeResultType) -> {
                         val newTier = getToolMaterialTier(tradeResultType)
-                        val currentSword = loadout.sword
-                        val currentTier = currentSword.type.let { getToolMaterialTier(it) } ?: 0
-
+                        val currentTier = getCurrentSwordTier(player)
                         showTrade = newTier > currentTier
                     }
                 }
@@ -310,7 +308,7 @@ object ShopGui : Listener {
                 val currentTier = when {
                     isArmorTrade -> loadout.getStoredArmor(getArmorType(tradeResultType))?.type?.let { getArmorMaterialTier(it) } ?: 0
                     isToolTrade -> player.inventory.contents.filterNotNull().firstOrNull { getToolType(it.type) == getToolType(tradeResultType) }?.type?.let { getToolMaterialTier(it) } ?: 0
-                    isSwordTrade -> loadout.sword.type.let { getToolMaterialTier(it) } ?: 0
+                    isSwordTrade -> getCurrentSwordTier(player)
                     else -> 0
                 }
                 val newTier = when {
@@ -577,6 +575,15 @@ object ShopGui : Listener {
         material == Material.SHEARS -> "shears"
         material.name.endsWith("_SWORD") -> "sword"
         else -> "unknown"
+    }
+
+    private fun getCurrentSwordTier(player: Player): Int {
+        val bestSword = player.inventory.contents
+            .filterNotNull()
+            .filter { isSword(it.type) }
+            .maxByOrNull { getToolMaterialTier(it.type) }
+
+        return bestSword?.type?.let { getToolMaterialTier(it) } ?: 0
     }
 
     private fun getArmorMaterialTier(material: Material): Int = when {

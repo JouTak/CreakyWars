@@ -130,16 +130,43 @@ data class PlayerLoadout(
         val unbreakableSword = makeUnbreakable(newSword.clone())
         applyTeamEnchants(unbreakableSword)
 
-        sword = unbreakableSword
-
-        for (i in 0 until player.inventory.size) {
-            val item = player.inventory.getItem(i)
+        val inv = player.inventory
+        var replaced = false
+        for (i in 0 until inv.size) {
+            val item = inv.getItem(i)
             if (item != null && isSword(item.type)) {
-                player.inventory.setItem(i, unbreakableSword)
+                inv.setItem(i, unbreakableSword)
+                replaced = true
                 break
             }
         }
+
+        if (!replaced) {
+            val leftover = inv.addItem(unbreakableSword)
+            if (leftover.isNotEmpty()) {
+                leftover.values.forEach { player.world.dropItemNaturally(player.location, it) }
+                MessageUtils.sendMessage(player, "§eКупленный меч выпал на землю!")
+            }
+        }
+
+        sword = unbreakableSword
         MessageUtils.sendMessage(player, "§aМеч улучшен!")
+    }
+
+    fun ensureHasSwordInInventory() {
+        if (player.gameMode != org.bukkit.GameMode.SURVIVAL) return
+        if (player.inventory.contents.any { it != null && isSword(it.type) }) return
+
+        val baseSword = ItemStack(Material.WOODEN_SWORD)
+        makeUnbreakable(baseSword)
+        applyTeamEnchants(baseSword)
+
+        val leftover = player.inventory.addItem(baseSword)
+        if (leftover.isNotEmpty()) {
+            leftover.values.forEach { player.world.dropItemNaturally(player.location, it) }
+        }
+
+        sword = baseSword
     }
 
     fun addOrReplaceTool(tool: ItemStack) {

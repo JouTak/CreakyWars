@@ -11,13 +11,31 @@ import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
+import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.*
+import org.bukkit.Bukkit
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.game.PlayerLoadout
 import ru.joutak.creakywars.utils.MessageUtils
+import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.minigames.managers.MatchmakingManager
 
 class PlayerListener : Listener {
+
+    private fun isSwordItem(item: org.bukkit.inventory.ItemStack?): Boolean {
+        if (item == null) return false
+        if (item.type.isAir) return false
+        return item.type.name.endsWith("_SWORD")
+    }
+
+    private fun scheduleEnsureWoodenSword(player: Player) {
+        Bukkit.getScheduler().runTask(PluginManager.getPlugin(), Runnable {
+            if (!player.isOnline) return@Runnable
+            val game = GameManager.getGame(player) ?: return@Runnable
+            if (game.isSpectator(player.uniqueId)) return@Runnable
+            game.getPlayerData(player)?.loadout?.ensureHasSwordInInventory()
+        })
+    }
 
     @EventHandler
     fun onPlayerJoin(event: PlayerJoinEvent) {
@@ -169,6 +187,33 @@ class PlayerListener : Listener {
         player.updateInventory()
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onInventoryClickEnsureSword(event: InventoryClickEvent) {
+        val player = event.whoClicked as? Player ?: return
+        val game = GameManager.getGame(player) ?: return
+        if (game.isSpectator(player.uniqueId)) return
+        if (player.gameMode != GameMode.SURVIVAL) return
+
+        val cursorSword = isSwordItem(event.cursor)
+        val currentSword = isSwordItem(event.currentItem)
+        val hotbarSword = if (event.hotbarButton >= 0) isSwordItem(player.inventory.getItem(event.hotbarButton)) else false
+        if (!cursorSword && !currentSword && !hotbarSword) return
+
+        scheduleEnsureWoodenSword(player)
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onInventoryDragEnsureSword(event: InventoryDragEvent) {
+        val player = event.whoClicked as? Player ?: return
+        val game = GameManager.getGame(player) ?: return
+        if (game.isSpectator(player.uniqueId)) return
+        if (player.gameMode != GameMode.SURVIVAL) return
+
+        val affectsSword = isSwordItem(event.oldCursor) || event.newItems.values.any { isSwordItem(it) }
+        if (!affectsSword) return
+
+        scheduleEnsureWoodenSword(player)
+    }
 
     @EventHandler
     fun onPlayerPickupArrow(event: PlayerPickupArrowEvent) {
