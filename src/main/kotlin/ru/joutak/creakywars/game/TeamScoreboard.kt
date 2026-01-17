@@ -51,7 +51,14 @@ class TeamScoreboard(private val game: Game) {
 
     private fun ensure(player: Player) {
         val uuid = player.uniqueId
-        if (states.containsKey(uuid)) return
+
+        val existing = states[uuid]
+        if (existing != null) {
+            if (player.scoreboard != existing.scoreboard) {
+                player.scoreboard = existing.scoreboard
+            }
+            return
+        }
 
         val previous = player.scoreboard
         val scoreboard = Bukkit.getScoreboardManager().newScoreboard
@@ -96,8 +103,7 @@ class TeamScoreboard(private val game: Game) {
     private fun buildLines(viewer: Player): List<String> {
         val lines = mutableListOf<String>()
 
-        val phaseName = game.getCurrentPhaseName()
-        lines += "§7Матч: §e#${game.arena.id} §8| §7Фаза: §6$phaseName"
+        lines += "§7Матч: §e#${game.arena.id}"
         lines += "§7Ник: §f${viewer.name}"
 
         val data = game.getPlayerData(viewer)
@@ -132,13 +138,13 @@ class TeamScoreboard(private val game: Game) {
         val alive = team.getAlivePlayers(game).size
         val online = team.getOnlinePlayers().size
 
-        val info = when {
-            eliminated -> "§7выбыла"
-            team.coreDestroyed -> "§f$alive/$online §8| §cЯдро✗"
-            else -> "§f$alive/$online §8| §aЯдро✓"
+        val info = if (eliminated) {
+            "§7выбыла"
+        } else {
+            "§f$alive/$online"
         }
 
-        return "$marker $status ${team.color}${team.name} §8| §7$info"
+        return "$marker $status ${team.color}${team.name} §8| $info"
     }
 
     /**

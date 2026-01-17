@@ -27,6 +27,7 @@ import ru.joutak.creakywars.upgrades.BrainStationManager
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.minigames.managers.MatchmakingManager
+import ru.joutak.minigames.lobby.LobbyItemsManager
 import ru.joutak.minigames.ui.LobbyScoreboardManager
 import ru.joutak.minigames.ui.QueueBossBarManager
 import ru.joutak.minigames.MiniGamesAPI
@@ -66,6 +67,8 @@ class Game(
 
     private val spectators = mutableSetOf<UUID>()
     private val spectatorBackups = mutableMapOf<UUID, SpectatorBackup>()
+    private val spectatorEnforceTasks = mutableMapOf<UUID, BukkitTask>()
+
 
 
     // Results recording (MiniGamesAPI shared DB)
@@ -334,9 +337,27 @@ class Game(
         } catch (_: Exception) {
         }
 
+        // If lobby items were reapplied by another plugin on teleport/world-change, remove them again.
+        try {
+            LobbyItemsManager.remove(player)
+        } catch (_: Exception) {
+        }
+
+        try {
+            QueueBossBarManager.remove(player)
+        } catch (_: Exception) {
+        }
+        try {
+            LobbyScoreboardManager.remove(player)
+        } catch (_: Exception) {
+        }
+
         teamScoreboard.addPlayer(player)
         teamScoreboard.update()
         phaseBossBar.addPlayer(player)
+
+        // Keep spectator state stable even if MiniGamesAPI re-applies lobby UI on teleports/world changes.
+        startSpectatorEnforce(player)
 
         MessageUtils.sendMessage(
             player,
@@ -348,6 +369,8 @@ class Game(
     fun removeSpectator(player: Player, silent: Boolean = false, forceLobby: Boolean = true) {
         val uuid = player.uniqueId
         if (!spectators.contains(uuid)) return
+
+        stopSpectatorEnforce(uuid)
 
         spectators.remove(uuid)
 
@@ -386,6 +409,97 @@ class Game(
     private fun getSpectatorViewLocation(): Location {
         // Simple safe point: (0.5, 75, 0.5) is used for in-game death spectate as well.
         return Location(arena.world, 0.5, 75.0, 0.5)
+    }
+
+    private fun startSpectatorEnforce(player: Player) {
+        val uuid = player.uniqueId
+        // Cancel existing task for safety.
+        stopSpectatorEnforce(uuid)
+
+        val plugin = PluginManager.getPlugin()
+
+        // One-tick delayed enforce: world-change / lobby listeners usually run on the same tick as teleport.
+        try {
+            Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+                val p = Bukkit.getPlayer(uuid) ?: return@Runnable
+                if (!p.isOnline || !spectators.contains(uuid)) return@Runnable
+                enforceSpectatorState(p)
+            }, 1L)
+        } catch (_: Exception) {
+        }
+
+        val task = Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
+            val p = Bukkit.getPlayer(uuid)
+            if (p == null || !p.isOnline || !spectators.contains(uuid)) {
+                stopSpectatorEnforce(uuid)
+                return@Runnable
+            }
+            enforceSpectatorState(p)
+        }, 5L, 5L)
+
+        spectatorEnforceTasks[uuid] = task
+    }
+
+    private fun stopSpectatorEnforce(uuid: UUID) {
+        val task = spectatorEnforceTasks.remove(uuid) ?: return
+        try {
+            task.cancel()
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun enforceSpectatorState(player: Player) {
+        // Keep spectate UX, but do not force GameMode (admin may switch to CREATIVE).
+        try {
+            if (player.gameMode == GameMode.SPECTATOR) {
+                player.allowFlight = true
+                player.isFlying = true
+            }
+            player.fireTicks = 0
+        } catch (_: Exception) {
+        }
+
+        // Do not allow MiniGamesAPI lobby UI/items to override spectate.
+        try {
+            QueueBossBarManager.remove(player)
+        } catch (_: Exception) {
+        }
+        try {
+            LobbyScoreboardManager.remove(player)
+        } catch (_: Exception) {
+        }
+        try {
+            LobbyItemsManager.remove(player)
+        } catch (_: Exception) {
+        }
+
+        // If some plugin put the admin into an instance/queue, detach.
+        try {
+            MatchmakingManager.removePlayer(player)
+        } catch (_: Exception) {
+        }
+
+        // Ensure the viewer stays in the match world.
+        try {
+            if (player.world.name != arena.world.name) {
+                player.teleport(getSpectatorViewLocation())
+            }
+        } catch (_: Exception) {
+        }
+
+        // Re-attach match UI if something replaced scoreboard.
+        try {
+            teamScoreboard.addPlayer(player)
+        } catch (_: Exception) {
+        }
+        try {
+            phaseBossBar.addPlayer(player)
+        } catch (_: Exception) {
+        }
+        try {
+            teamScoreboard.update()
+        } catch (_: Exception) {
+        }
     }
 
     fun startCountdown() {
@@ -597,7 +711,12 @@ class Game(
             }
         }
 
-        if (gameTick % 20L == 0L) {            checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
+        if (gameTick % 20L == 0L) {
+            try {
+                teamScoreboard.update()
+            } catch (_: Exception) {
+            }
+            checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
         }
     }
 
@@ -685,6 +804,11 @@ class Game(
 
             player.teleport(spectatorLocation)
 
+            try {
+                teamScoreboard.update()
+            } catch (_: Exception) {
+            }
+
             if (isDebugMode) {
                 startRespawnTimer(player, spectatorLocation)
                 return@Runnable
@@ -700,6 +824,11 @@ class Game(
                     val killerData = getPlayerData(killer)
                     killerData?.addFinalKill()
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
+                }
+
+                try {
+                    teamScoreboard.update()
+                } catch (_: Exception) {
                 }
 
                 checkWinCondition()
@@ -718,6 +847,11 @@ class Game(
                     val killerData = getPlayerData(killer)
                     killerData?.addFinalKill()
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
+                }
+
+                try {
+                    teamScoreboard.update()
+                } catch (_: Exception) {
                 }
 
                 checkWinCondition()
@@ -808,6 +942,11 @@ class Game(
                 data.isAlive = false
                 player.gameMode = GameMode.SPECTATOR
 
+                try {
+                    teamScoreboard.update()
+                } catch (_: Exception) {
+                }
+
                 MessageUtils.sendMessage(player, "§c§lВаше ядро уничтожено!")
                 MessageUtils.sendTitle(player, "§c☠ ВЫБЫЛИ ☠", "§eВаше ядро уничтожено")
                 return@Runnable
@@ -819,6 +958,11 @@ class Game(
 
                 data.isAlive = false
                 player.gameMode = GameMode.SPECTATOR
+
+                try {
+                    teamScoreboard.update()
+                } catch (_: Exception) {
+                }
 
                 MessageUtils.sendMessage(player, "§c§lУ команды закончились жизни!")
                 return@Runnable
@@ -866,6 +1010,11 @@ class Game(
                 MessageUtils.sendMessage(player, "§aВы возродились!")
                 MessageUtils.sendTitle(player, "§aВозрождение!", "§eУдачи!")
                 player.playSound(player.location, Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f)
+
+                try {
+                    teamScoreboard.update()
+                } catch (_: Exception) {
+                }
             }, 1L)
         }
     }
