@@ -155,7 +155,18 @@ data class PlayerLoadout(
 
     fun ensureHasSwordInInventory() {
         if (player.gameMode != org.bukkit.GameMode.SURVIVAL) return
-        if (player.inventory.contents.any { it != null && isSword(it.type) }) return
+
+        fun hasSword(stack: ItemStack?): Boolean {
+            if (stack == null) return false
+            if (stack.type.isAir) return false
+            return isSword(stack.type)
+        }
+
+        // When a player is moving a sword between inventories, it can temporarily sit on the cursor.
+        // In that case we should NOT hand out a wooden sword to avoid duplicates.
+        if (hasSword(player.itemOnCursor)) return
+        if (hasSword(player.inventory.itemInOffHand)) return
+        if (player.inventory.contents.any { hasSword(it) }) return
 
         val baseSword = ItemStack(Material.WOODEN_SWORD)
         makeUnbreakable(baseSword)
