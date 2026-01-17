@@ -334,6 +334,17 @@ class Game(
         } catch (_: Exception) {
         }
 
+        // Some servers/plugins may override gamemode on teleport/world change.
+        // We set spectator once more on the next tick (but never override CREATIVE).
+        Bukkit.getScheduler().runTask(PluginManager.getPlugin(), Runnable {
+            if (GameManager.getSpectatingGame(player) == this && player.gameMode != GameMode.CREATIVE) {
+                try {
+                    player.gameMode = GameMode.SPECTATOR
+                } catch (_: Exception) {
+                }
+            }
+        })
+
         teamScoreboard.addPlayer(player)
         teamScoreboard.update()
         phaseBossBar.addPlayer(player)
@@ -549,22 +560,8 @@ class Game(
         return teams.filter { it.players.isNotEmpty() }
     }
 
-    private fun ensureBaseSwords() {
-        for ((uuid, data) in playerData) {
-            if (!data.isAlive) continue
-            if (isSpectator(uuid)) continue
-
-            val player = Bukkit.getPlayer(uuid) ?: continue
-            data.loadout?.ensureHasSwordInInventory()
-        }
-    }
-
     private fun tick() {
         gameTick++
-
-        if (gameTick % 10L == 0L) {
-            ensureBaseSwords()
-        }
 
         if (currentPhaseIndex < ScenarioConfig.phases.size) {
             val currentPhase = ScenarioConfig.phases[currentPhaseIndex]
@@ -611,7 +608,10 @@ class Game(
             }
         }
 
-        if (gameTick % 20L == 0L) {            checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
+        if (gameTick % 20L == 0L) {
+            // Scoreboard should keep updating even without core-destroy events (e.g. team elimination on death).
+            teamScoreboard.update()
+            checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
         }
     }
 
@@ -716,7 +716,8 @@ class Game(
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
                 }
 
-                checkWinCondition()
+				teamScoreboard.update()
+				checkWinCondition()
                 return@Runnable
             }
 
@@ -734,7 +735,8 @@ class Game(
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
                 }
 
-                checkWinCondition()
+				teamScoreboard.update()
+				checkWinCondition()
             }
         }, 1L)
     }
@@ -824,6 +826,9 @@ class Game(
 
                 MessageUtils.sendMessage(player, "§c§lВаше ядро уничтожено!")
                 MessageUtils.sendTitle(player, "§c☠ ВЫБЫЛИ ☠", "§eВаше ядро уничтожено")
+
+                teamScoreboard.update()
+                checkWinCondition()
                 return@Runnable
             }
 
@@ -835,6 +840,9 @@ class Game(
                 player.gameMode = GameMode.SPECTATOR
 
                 MessageUtils.sendMessage(player, "§c§lУ команды закончились жизни!")
+
+                teamScoreboard.update()
+                checkWinCondition()
                 return@Runnable
             }
             if (remainingSeconds <= 0) {
