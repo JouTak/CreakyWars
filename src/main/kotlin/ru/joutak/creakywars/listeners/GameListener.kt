@@ -22,6 +22,18 @@ import ru.joutak.creakywars.game.GameManager
 @Suppress("DEPRECATION")
 class GameListener : Listener {
 
+    private fun isAllowedReplaceable(type: Material): Boolean {
+        return when (type) {
+            // Decorative plants that players should be able to place blocks into.
+            Material.SHORT_GRASS,
+            Material.TALL_GRASS,
+            Material.FERN,
+            Material.LARGE_FERN,
+            Material.DEAD_BUSH -> true
+            else -> false
+        }
+    }
+
     @EventHandler
     fun onBlockBreak(event: BlockBreakEvent) {
         val player = event.player
@@ -61,9 +73,11 @@ class GameListener : Listener {
         val blockLocation = event.block.location
         val blockType = event.block.type
 
-        // Prevent replacing map blocks by placing into them (e.g. grass/flowers),
+        // Prevent replacing protected map blocks by placing into them,
         // otherwise players can destroy protected blocks without breaking.
-        if (!event.blockReplacedState.type.isAir) {
+        // But allow replacing decorative plants (grass/fern) so building feels natural.
+        val replacedType = event.blockReplacedState.type
+        if (!replacedType.isAir && !isAllowedReplaceable(replacedType)) {
             event.isCancelled = true
             return
         }
