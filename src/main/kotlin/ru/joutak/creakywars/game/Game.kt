@@ -5,11 +5,6 @@ import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.Sound
-import ru.joutak.creakywars.ceremony.CeremonyController
-import ru.joutak.creakywars.arenas.ArenaManager
-import org.bukkit.inventory.meta.LeatherArmorMeta
-import org.bukkit.World
-import org.bukkit.Color
 import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
 import org.bukkit.block.data.Directional
@@ -83,11 +78,9 @@ class Game(
     private val lastKnownName = mutableMapOf<java.util.UUID, String>()
     private val departedStats = mutableMapOf<java.util.UUID, RecordedPlayerStats>()
 
-    private val eliminatedAtTick = mutableMapOf<Int, Long>()
-
-    private var ceremonyWorldName: String? = null
-    private var ceremonyTask: BukkitTask? = null
-    private val ceremonyParticipants = mutableSetOf<UUID>()
+    private var participantsSnapshot: List<java.util.UUID>? = null
+    private val teamByPlayerAtStart = mutableMapOf<java.util.UUID, Int>()
+    private val teamEliminatedAtMs = mutableMapOf<Int, Long>()
 
     val players: List<Player>
         get() = playerData.keys.mapNotNull { Bukkit.getPlayer(it) }
@@ -118,6 +111,8 @@ class Game(
         val data = PlayerData(player.uniqueId, team)
         playerData[player.uniqueId] = data
         team.addPlayer(player.uniqueId)
+
+        teamByPlayerAtStart.putIfAbsent(player.uniqueId, team.id)
 
         // Track for results even if player leaves later.
         lastKnownName[player.uniqueId] = player.name
@@ -296,7 +291,7 @@ class Game(
         } else {
             broadcastMessage("§cИгра принудительно завершена администратором!")
         }
-        endGame(null, recordResults = false, allowCeremony = false)
+        endGame(null)
     }
 
     fun addSpectator(player: Player): Boolean {
@@ -459,6 +454,8 @@ class Game(
         gameTick = 0L
         phaseStartTick = 0L
 
+        captureParticipantsSnapshot()
+
         val activeTeams = teams.filter { it.players.isNotEmpty() }
 
         if (AdminConfig.debugMode) {
@@ -620,7 +617,6 @@ class Game(
         }
 
         if (gameTick % 20L == 0L) {
-            updateEliminations()
             // Scoreboard should keep updating even without core-destroy events (e.g. team elimination on death).
             teamScoreboard.update()
             checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
@@ -905,6 +901,8 @@ class Game(
     }
 
     private fun checkWinCondition(phasesFinished: Boolean = false) {
+        trackTeamEliminations()
+
         val aliveTeams = teams.filter { !it.isEliminated(this) }
 
         if (isDebugMode) {
@@ -932,266 +930,113 @@ class Game(
             }
             aliveTeams.isEmpty() -> {
                 PluginManager.getLogger().info("Игра #${arena.id}: ничья, все команды выбыли")
-                endGame(null, recordResults = false, allowCeremony = false)
+                endGame(null)
             }
             phasesFinished && aliveTeams.size > 1 -> {
                 PluginManager.getLogger().info("Игра #${arena.id}: ничья по истечении фаз")
-                endGame(null, recordResults = false, allowCeremony = false)
+                endGame(null)
             }
         }
     }
 
 
-    private fun updateEliminations() {
-        // Track first moment when a team becomes eliminated, to build 2..4 places for ceremony
-        teams.filter { it.players.isNotEmpty() }.forEach { team ->
-            if (!eliminatedAtTick.containsKey(team.id) && team.isEliminated(this)) {
-                eliminatedAtTick[team.id] = gameTick
-            }
-        }
-    }
-
-private fun endGame(winnerTeam: Team?, recordResults: Boolean = true, allowCeremony: Boolean = true) {
-    // Allow re-enter: if something went wrong with scheduled cleanup, we can reschedule it.
-    if (arena.state == ArenaState.ENDING) {
-        try { cleanupTask?.cancel() } catch (_: Exception) {}
-        cleanupTask = null
-        try { ceremonyTask?.cancel() } catch (_: Exception) {}
-        ceremonyTask = null
-
-        val cw = ceremonyWorldName
-        if (cw != null) {
-            // Drop all bounds just in case
-            ceremonyParticipants.mapNotNull { Bukkit.getPlayer(it) }.forEach { CeremonyController.clearPlayer(it) }
-            CeremonyController.clearWorld(cw)
-            ceremonyParticipants.clear()
-        }
-    }
-
-    arena.state = ArenaState.ENDING
-
-    try { startingTask?.cancel() } catch (_: Exception) {}
-    startingTask = null
-
-    try { gameTask?.cancel() } catch (_: Exception) {}
-    gameTask = null
-
-    respawnTimers.values.toList().forEach { try { it.cancel() } catch (_: Exception) {} }
-    respawnTimers.clear()
-
-    pendingLastChanceRespawn.clear()
-    awaitingRespawnSetup.clear()
-
-    try { dayNightCycle.stop() } catch (_: Exception) {}
-    try { ResourceSpawner.stopSpawning(this) } catch (_: Exception) {}
-    try { TraderManager.removeTraders(this) } catch (_: Exception) {}
-    try { BrainStationManager.remove(this) } catch (_: Exception) {}
-
-    try { phaseBossBar.remove() } catch (_: Exception) {}
-
-    try { disableListeners() } catch (_: Exception) {}
-
-    // Remove spectators from match world before ceremony
-    spectatorsOnline.toList().forEach {
-        try { removeSpectator(it, silent = true, forceLobby = true) } catch (_: Exception) {}
-    }
-
-    if (winnerTeam != null) {
-        val winnerName = "${winnerTeam.color}${winnerTeam.name}"
-
-        // Titles should be personal: winners see "Победа", everyone else sees "Поражение" / neutral.
-        getAudiencePlayers().forEach { player ->
-            val data = getPlayerData(player)
-            when {
-                data?.team?.id == winnerTeam.id -> MessageUtils.sendTitle(player, "§6Победа!", "§e$winnerName")
-                spectators.contains(player.uniqueId) || data?.team == null ->
-                    MessageUtils.sendTitle(player, "§eИгра окончена", "§7Победитель: §e$winnerName")
-                else -> MessageUtils.sendTitle(player, "§cПоражение!", "§7Победитель: §e$winnerName")
-            }
+    private fun endGame(winnerTeam: Team?) {
+        // Allow re-enter: if something went wrong with scheduled cleanup, we can reschedule it.
+        if (arena.state == ArenaState.ENDING) {
+            cleanupTask?.cancel()
+            cleanupTask = null
         }
 
-        broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
-        broadcastMessage("§6§lПОБЕДИТЕЛЬ: $winnerName")
-        displayStats()
-        broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
+        arena.state = ArenaState.ENDING
 
-        winnerTeam.getOnlinePlayers().forEach { player ->
-            try { player.playSound(player.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f) } catch (_: Exception) {}
-        }
-    } else {
-        broadcastTitle("§eНичья!", "§7Никто не победил")
-        broadcastMessage("§7Игра завершилась ничьей!")
-        displayStats()
-    }
-
-    val ceremonyPlanned =
-        winnerTeam != null &&
-        recordResults &&
-        allowCeremony &&
-        AdminConfig.ceremonyEnabled &&
-        AdminConfig.ceremonyPodiums.size >= 4 &&
-        AdminConfig.ceremonyTemplateWorldName.isNotBlank() &&
-        players.isNotEmpty()
-
-    if (ceremonyPlanned && winnerTeam != null) {
-        val started = try { startCeremony(winnerTeam) } catch (_: Exception) { false }
-        if (started) {
-            val ticks = (AdminConfig.ceremonyDurationSeconds.coerceAtLeast(1) * 20L)
-            ceremonyTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
-                finishCeremony(winnerTeam, recordResults)
-            }, ticks)
-            return
-        }
-    }
-
-    if (recordResults) {
-        sendResults(winnerTeam)
-    }
-
-    // Ensure the game always proceeds to full cleanup and removal from GameManager.
-    cleanupTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
-        cleanup()
-    }, 200L)
-}
-
-private fun startCeremony(winnerTeam: Team): Boolean {
-    val template = AdminConfig.ceremonyTemplateWorldName
-    val podiums = AdminConfig.ceremonyPodiums
-    if (template.isBlank() || podiums.size < 4) return false
-
-    val worldName = "cw_ceremony_${arena.mapConfig.mapName}_${arena.id}_${matchId.toString().substring(0, 8)}"
-
-    val world = try {
-        ArenaManager.cloneWorld(template, worldName)
-    } catch (e: Exception) {
-        PluginManager.getLogger().warning("Не удалось клонировать церемониальный мир '$template' -> '$worldName': ${e.message}")
-        return false
-    }
-
-    ceremonyWorldName = worldName
-    ceremonyParticipants.clear()
-
-    val order = buildCeremonyOrder(winnerTeam)
-    if (order.isEmpty()) {
-        try { ArenaManager.deleteWorldByName(worldName) } catch (_: Exception) {}
-        ceremonyWorldName = null
-        return false
-    }
-
-    for (placeIndex in 0 until 4) {
-        val team = order.getOrNull(placeIndex) ?: continue
-        val podium = podiums[placeIndex]
-        val bounds = podium.toBounds()
-
-        val online = team.getOnlinePlayers()
-        online.forEachIndexed { idx, player ->
-            prepareCeremonyPlayer(player, team)
-            val loc = podium.getSpawnLocation(world, idx)
-            player.teleport(loc)
-            CeremonyController.setPlayerRegion(player, worldName, bounds)
-            ceremonyParticipants.add(player.uniqueId)
-        }
-    }
-
-    return true
-}
-
-private fun buildCeremonyOrder(winnerTeam: Team): List<Team> {
-    val participating = teams.filter { it.players.isNotEmpty() }
-    if (participating.isEmpty()) return emptyList()
-
-    // Ensure eliminated ticks are filled for already eliminated teams
-    participating.forEach { team ->
-        if (team.id != winnerTeam.id && team.isEliminated(this) && !eliminatedAtTick.containsKey(team.id)) {
-            eliminatedAtTick[team.id] = gameTick
-        }
-    }
-
-    return participating
-        .sortedWith(
-            compareByDescending<Team> { team ->
-                if (team.id == winnerTeam.id) Long.MAX_VALUE else (eliminatedAtTick[team.id] ?: Long.MIN_VALUE)
-            }.thenBy { it.id }
-        )
-        .take(4)
-}
-
-private fun prepareCeremonyPlayer(player: Player, team: Team) {
-    try { player.inventory.clear() } catch (_: Exception) {}
-    try {
-        player.inventory.helmet = null
-        player.inventory.chestplate = null
-        player.inventory.leggings = null
-        player.inventory.boots = null
-        player.inventory.setItemInOffHand(null)
-    } catch (_: Exception) {}
-
-    try {
-        player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
-    } catch (_: Exception) {}
-
-    try {
-        player.fireTicks = 0
-        player.health = player.maxHealth
-        player.foodLevel = 20
-        player.saturation = 20f
-    } catch (_: Exception) {}
-
-    try { player.gameMode = GameMode.ADVENTURE } catch (_: Exception) {}
-
-    val loadout = getPlayerData(player)?.loadout ?: PlayerLoadout(player, team)
-
-    try {
-        player.inventory.helmet = loadout.getStoredArmor("helmet")?.clone()
-        player.inventory.chestplate = loadout.getStoredArmor("chestplate")?.clone()
-        player.inventory.leggings = loadout.getStoredArmor("leggings")?.clone()
-        player.inventory.boots = loadout.getStoredArmor("boots")?.clone()
-    } catch (_: Exception) {}
-
-    try {
-        player.inventory.addItem(loadout.createCopperSword())
-    } catch (_: Exception) {}
-
-    val charges = AdminConfig.ceremonyWindCharges.coerceAtLeast(0)
-    if (charges > 0) {
         try {
-            player.inventory.addItem(ItemStack(Material.WIND_CHARGE, charges))
-        } catch (_: Exception) {}
-    }
-
-    try { player.inventory.heldItemSlot = 0 } catch (_: Exception) {}
-}
-
-private fun finishCeremony(winnerTeam: Team?, recordResults: Boolean) {
-    val worldName = ceremonyWorldName
-    ceremonyWorldName = null
-
-    val lobby = Bukkit.getWorlds().firstOrNull()?.spawnLocation
-    val participants = ceremonyParticipants.toList()
-    ceremonyParticipants.clear()
-
-    participants.mapNotNull { Bukkit.getPlayer(it) }.forEach { player ->
-        try { CeremonyController.clearPlayer(player) } catch (_: Exception) {}
-        if (lobby != null) {
-            try { player.teleport(lobby) } catch (_: Exception) {}
+            startingTask?.cancel()
+        } catch (_: Exception) {
         }
+        startingTask = null
+
+        try {
+            gameTask?.cancel()
+        } catch (_: Exception) {
+        }
+        gameTask = null
+
+        respawnTimers.values.toList().forEach {
+            try {
+                it.cancel()
+            } catch (_: Exception) {
+            }
+        }
+        respawnTimers.clear()
+
+        pendingLastChanceRespawn.clear()
+        awaitingRespawnSetup.clear()
+
+        try {
+            dayNightCycle.stop()
+        } catch (_: Exception) {
+        }
+
+        try {
+            ResourceSpawner.stopSpawning(this)
+        } catch (_: Exception) {
+        }
+
+        try {
+            TraderManager.removeTraders(this)
+        } catch (_: Exception) {
+        }
+
+        try {
+            BrainStationManager.remove(this)
+        } catch (_: Exception) {
+        }
+
+        try {
+            disableListeners()
+        } catch (_: Exception) {
+        }
+
+        if (winnerTeam != null) {
+            val winnerName = "${winnerTeam.color}${winnerTeam.name}"
+
+            // Titles should be personal: winners see "Победа", everyone else sees "Поражение" / neutral.
+            getAudiencePlayers().forEach { player ->
+                val data = getPlayerData(player)
+                when {
+                    data?.team?.id == winnerTeam.id -> MessageUtils.sendTitle(player, "§6Победа!", "§e$winnerName")
+                    spectators.contains(player.uniqueId) || data?.team == null ->
+                        MessageUtils.sendTitle(player, "§eИгра окончена", "§7Победитель: §e$winnerName")
+                    else -> MessageUtils.sendTitle(player, "§cПоражение!", "§7Победитель: §e$winnerName")
+                }
+            }
+
+            broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
+            broadcastMessage("§6§lПОБЕДИТЕЛЬ: $winnerName")
+            displayStats()
+            sendResults(winnerTeam)
+            broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
+
+            winnerTeam.getOnlinePlayers().forEach { player ->
+                try {
+                    player.playSound(player.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f)
+                } catch (_: Exception) {
+                }
+            }
+        } else {
+            broadcastTitle("§eНичья!", "§7Никто не победил")
+            broadcastMessage("§7Игра завершилась ничьей!")
+            displayStats()
+            sendResults(null)
+        }
+
+        // Ensure the game always proceeds to full cleanup and removal from GameManager.
+        cleanupTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
+            cleanup()
+        }, 200L)
     }
 
-    if (worldName != null) {
-        try { CeremonyController.clearWorld(worldName) } catch (_: Exception) {}
-        try { ArenaManager.deleteWorldByName(worldName) } catch (_: Exception) {}
-    }
-
-    if (recordResults) {
-        sendResults(winnerTeam)
-    }
-
-    cleanupTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
-        cleanup()
-    }, 1L)
-}
-
-fun disableListeners() {
+    fun disableListeners() {
         HandlerList.unregisterAll(teamChestListener)
     }
 
@@ -1209,6 +1054,72 @@ fun disableListeners() {
         }
     }
 
+    private fun captureParticipantsSnapshot() {
+        if (participantsSnapshot != null) return
+
+        // Snapshot participants and their teamId at the moment the match starts.
+        // This must not depend on who is still online by the end of the match.
+        val snapshot = LinkedHashSet<java.util.UUID>()
+        // Prefer team membership (stable in this game) so that offline players are still included.
+        teams.forEach { team ->
+            team.players.forEach { uuid ->
+                snapshot.add(uuid)
+                teamByPlayerAtStart.putIfAbsent(uuid, team.id)
+            }
+        }
+        // Fallback: any playerData not present in teams (should not happen).
+        playerData.keys.forEach { uuid ->
+            snapshot.add(uuid)
+        }
+
+        participantsSnapshot = snapshot.toList()
+    }
+
+    private fun trackTeamEliminations() {
+        // Record elimination times once, to build stable placements (1..4).
+        val now = System.currentTimeMillis()
+        teams.forEach { team ->
+            if (teamEliminatedAtMs.containsKey(team.id)) return@forEach
+            if (team.isEliminated(this)) {
+                teamEliminatedAtMs[team.id] = now
+            }
+        }
+    }
+
+    private fun computeTeamPlacements(
+        winnerTeamId: Int?,
+        endedAtMs: Long,
+        teamKills: Map<Int, Int>,
+    ): Map<Int, Int> {
+        // Always return placements for ids 0..3 (even if some teams are empty).
+        val allTeamIds = (0..3).toList()
+
+        fun eliminationScore(teamId: Int): Long {
+            val recorded = teamEliminatedAtMs[teamId]
+            if (recorded != null) return recorded
+            val team = teams.firstOrNull { it.id == teamId }
+            return if (team != null && team.isEliminated(this)) endedAtMs else Long.MAX_VALUE
+        }
+
+        var order = allTeamIds.sortedWith(
+            compareByDescending<Int> { eliminationScore(it) }
+                .thenByDescending { teamKills[it] ?: 0 }
+                .thenBy { it }
+        )
+
+        if (winnerTeamId != null) {
+            // Force the declared winner to be first (placement=1).
+            if (order.firstOrNull() != winnerTeamId) {
+                order = listOf(winnerTeamId) + order.filter { it != winnerTeamId }
+            }
+        }
+
+        val placements = HashMap<Int, Int>(4)
+        order.forEachIndexed { idx, teamId ->
+            placements[teamId] = idx + 1
+        }
+        return placements
+    }
 
     private fun sendResults(winnerTeam: Team?) {
         if (resultsSent) return
@@ -1217,6 +1128,9 @@ fun disableListeners() {
         val endedAtMs = System.currentTimeMillis()
         val winnerTeamId = winnerTeam?.id
 
+        captureParticipantsSnapshot()
+
+        // Snapshot current player stats (online at end)
         val currentSnapshots = playerData.values.map { data ->
             val uuid = data.uuid
             val playerName = Bukkit.getPlayer(uuid)?.name ?: lastKnownName[uuid]
@@ -1238,37 +1152,46 @@ fun disableListeners() {
             )
         }
 
-        val allPlayers = LinkedHashMap<UUID, RecordedPlayerStats>()
+        val allPlayers = LinkedHashMap<java.util.UUID, RecordedPlayerStats>()
         currentSnapshots.forEach { allPlayers[it.playerUuid] = it }
         departedStats.values.forEach { s -> allPlayers.putIfAbsent(s.playerUuid, s) }
 
-        val participatingTeams = teams.filter { team ->
-            allPlayers.values.any { it.teamId == team.id }
+        val participants = participantsSnapshot ?: allPlayers.keys.toList()
+
+        // Kills-by-team for ranking and metrics
+        val teamKills = HashMap<Int, Int>(4)
+        participants.forEach { uuid ->
+            val st = allPlayers[uuid]
+            val teamId = teamByPlayerAtStart[uuid] ?: st?.teamId
+            if (teamId != null) {
+                teamKills[teamId] = (teamKills[teamId] ?: 0) + (st?.kills ?: 0)
+            }
         }
 
-        val winnerApiTeamId = winnerTeamId?.let { it + 1 }
+        val placements = computeTeamPlacements(
+            winnerTeamId = winnerTeamId,
+            endedAtMs = endedAtMs,
+            teamKills = teamKills,
+        )
 
-        val teamResults = participatingTeams.map { team ->
-            val apiTeamId = team.id + 1
-            val teamPlayers = allPlayers.values.filter { it.teamId == team.id }
+        val teamResults = (0..3).map { teamId ->
+            val team = teams.firstOrNull { it.id == teamId }
 
-            val killsTotal = teamPlayers.sumOf { it.kills }.toLong()
-            val deathsTotal = teamPlayers.sumOf { it.deaths }.toLong()
-            val finalKillsTotal = teamPlayers.sumOf { it.finalKills }.toLong()
-            val playersTotal = teamPlayers.size.toLong()
+            val isWinner = winnerTeamId != null && teamId == winnerTeamId
 
-            val isWinner = winnerTeamId != null && team.id == winnerTeamId
-
-            val placement = when {
-                winnerTeamId == null -> null
-                isWinner -> 1
-                participatingTeams.size == 2 -> 2
-                else -> null
+            // Aggregate team metrics from participants snapshot (NOT from online-only list).
+            val teamPlayerStats = participants.mapNotNull { allPlayers[it] }.filter {
+                (teamByPlayerAtStart[it.playerUuid] ?: it.teamId) == teamId
             }
 
+            val killsTotal = teamPlayerStats.sumOf { it.kills }.toLong()
+            val deathsTotal = teamPlayerStats.sumOf { it.deaths }.toLong()
+            val finalKillsTotal = teamPlayerStats.sumOf { it.finalKills }.toLong()
+            val playersTotal = teamPlayerStats.size.toLong()
+
             TeamResult(
-                teamId = apiTeamId,
-                placement = placement,
+                teamId = teamId,
+                placement = placements[teamId],
                 isWinner = isWinner,
                 score = null,
                 metrics = listOf(
@@ -1276,35 +1199,40 @@ fun disableListeners() {
                     Metric.int("kills_total", killsTotal),
                     Metric.int("deaths_total", deathsTotal),
                     Metric.int("final_kills_total", finalKillsTotal),
-                    Metric.int("core_destroyed", if (team.coreDestroyed) 1 else 0),
-                    Metric.int("lives_remaining", team.livesRemaining.toLong()),
-                    Metric.int("forge_tier", team.forgeTier.toLong()),
-                    Metric.int("protection_level", team.protectionLevel.toLong()),
-                    Metric.int("sharpness_level", team.sharpnessLevel.toLong()),
-                    Metric.int("efficiency_level", team.efficiencyLevel.toLong()),
-                    Metric.int("fast_respawn", if (team.hasFastRespawn) 1 else 0),
-                    Metric.int("trap_active", if (team.trapActive) 1 else 0),
+                    Metric.int("core_destroyed", if (team?.coreDestroyed == true) 1 else 0),
+                    Metric.int("lives_remaining", (team?.livesRemaining ?: -1).toLong()),
+                    Metric.int("forge_tier", (team?.forgeTier ?: 0).toLong()),
+                    Metric.int("protection_level", (team?.protectionLevel ?: 0).toLong()),
+                    Metric.int("sharpness_level", (team?.sharpnessLevel ?: 0).toLong()),
+                    Metric.int("efficiency_level", (team?.efficiencyLevel ?: 0).toLong()),
+                    Metric.int("fast_respawn", if (team?.hasFastRespawn == true) 1 else 0),
+                    Metric.int("trap_active", if (team?.trapActive == true) 1 else 0),
                 ),
             )
         }
 
-        val playerResults = allPlayers.values.map { s ->
-            val apiTeamId = s.teamId?.let { it + 1 }
-            val isWinner = winnerApiTeamId != null && apiTeamId == winnerApiTeamId
+        val playerResults = participants.map { uuid ->
+            val st = allPlayers[uuid]
+
+            val resolvedName = st?.playerName ?: lastKnownName[uuid] ?: Bukkit.getPlayer(uuid)?.name
+            if (resolvedName != null) lastKnownName[uuid] = resolvedName
+
+            val resolvedTeamId = teamByPlayerAtStart[uuid] ?: st?.teamId ?: 0
+            val isWinner = winnerTeamId != null && resolvedTeamId == winnerTeamId
 
             PlayerResult(
-                playerUuid = s.playerUuid,
-                playerName = s.playerName,
-                teamId = apiTeamId,
+                playerUuid = uuid,
+                playerName = resolvedName,
+                teamId = resolvedTeamId,
                 isWinner = isWinner,
-                joinedAtMs = s.joinedAtMs,
-                leftAtMs = s.leftAtMs,
+                joinedAtMs = st?.joinedAtMs ?: joinedAtMs[uuid] ?: startedAtMs,
+                leftAtMs = st?.leftAtMs ?: leftAtMs[uuid],
                 metrics = listOf(
-                    Metric.int("kills", s.kills.toLong()),
-                    Metric.int("deaths", s.deaths.toLong()),
-                    Metric.int("final_kills", s.finalKills.toLong()),
-                    Metric.int("resources_collected", s.resourcesCollected.toLong()),
-                    Metric.int("alive_end", if (s.aliveAtEnd) 1 else 0),
+                    Metric.int("kills", (st?.kills ?: 0).toLong()),
+                    Metric.int("deaths", (st?.deaths ?: 0).toLong()),
+                    Metric.int("final_kills", (st?.finalKills ?: 0).toLong()),
+                    Metric.int("resources_collected", (st?.resourcesCollected ?: 0).toLong()),
+                    Metric.int("alive_end", if (st?.aliveAtEnd == true) 1 else 0),
                 ),
             )
         }
@@ -1434,7 +1362,7 @@ fun disableListeners() {
 
     fun forceEnd() {
         broadcastMessage("§cИгра принудительно завершена администратором!")
-        endGame(null, recordResults = false, allowCeremony = false)
+        endGame(null)
     }
 
     fun broadcastMessage(message: String) {
