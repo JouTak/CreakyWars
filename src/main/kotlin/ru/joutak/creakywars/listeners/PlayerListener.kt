@@ -14,6 +14,7 @@ import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.*
 import org.bukkit.Bukkit
+import ru.joutak.creakywars.ceremony.CeremonyController
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.game.PlayerLoadout
 import ru.joutak.creakywars.utils.MessageUtils
@@ -245,5 +246,29 @@ class PlayerListener : Listener {
         val player = event.player
         GameManager.getGame(player) ?: return
         event.respawnLocation = player.location
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onSpectatorCrossWorldTeleport(event: PlayerTeleportEvent) {
+        val player = event.player
+        if (player.gameMode != GameMode.SPECTATOR) return
+
+        // Admin/referees may want to teleport around freely.
+        if (player.hasPermission("creakywars.admin")) return
+
+        val game = GameManager.getGame(player) ?: GameManager.getSpectatingGame(player) ?: return
+
+        val to = event.to ?: return
+        val toWorld = to.world?.name ?: return
+
+        val allowedWorlds = hashSetOf(game.arena.world.name)
+        CeremonyController.getPlayerWorldName(player.uniqueId)?.let { allowedWorlds.add(it) }
+
+        if (allowedWorlds.contains(toWorld)) return
+
+        // Only allow cross-world teleports that are initiated by the game itself.
+        if (event.cause == PlayerTeleportEvent.TeleportCause.PLUGIN) return
+
+        event.isCancelled = true
     }
 }

@@ -38,6 +38,10 @@ object CeremonyController : Listener {
         return regions.values.map { it.worldName }.toSet()
     }
 
+    fun getPlayerWorldName(uuid: UUID): String? {
+        return regions[uuid]?.worldName
+    }
+
     private fun handleOutOfBounds(player: Player, safe: org.bukkit.Location) {
         val uuid = player.uniqueId
         if (teleporting.contains(uuid)) return
@@ -74,6 +78,12 @@ object CeremonyController : Listener {
         if (event.cause == PlayerTeleportEvent.TeleportCause.PLUGIN) return
 
         val to = event.to ?: return
+        // Spectator teleports can target entities in other worlds (Multiverse) — block that.
+        if (to.world?.name != reg.worldName) {
+            event.isCancelled = true
+            return
+        }
+
         if (!reg.bounds.contains(to)) {
             event.isCancelled = true
         }
