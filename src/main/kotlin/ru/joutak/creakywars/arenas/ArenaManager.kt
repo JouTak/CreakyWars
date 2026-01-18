@@ -84,9 +84,43 @@ object ArenaManager {
         return arena
     }
 
+
+
+/**
+ * Clone any multiverse world and apply our default gamerules/border settings.
+ * Used for ceremony worlds as well.
+ */
+fun cloneWorld(templateWorldName: String, newWorldName: String): World {
+    val templateWorld = Bukkit.getWorld(templateWorldName)
+        ?: throw IllegalStateException("Template world '$templateWorldName' not found")
+
+    if (!multiverseCore.mvWorldManager.cloneWorld(templateWorld.name, newWorldName)) {
+        throw IllegalStateException("Failed to clone world $newWorldName")
+    }
+
+    val world = Bukkit.getWorld(newWorldName)
+        ?: throw IllegalStateException("World $newWorldName is null after clone")
+
+    configureWorldRules(world)
+    return world
+}
+
+fun deleteWorldByName(worldName: String) {
+    try {
+        multiverseCore.mvWorldManager.deleteWorld(worldName, true, true)
+    } catch (_: Exception) {
+    }
+
+    try {
+        File(Bukkit.getWorldContainer(), worldName).deleteRecursively()
+    } catch (_: Exception) {
+    }
+
+    arenas.remove(worldName)
+}
     fun deleteArena(arena: Arena) {
         val worldName = arena.worldName
-        multiverseCore.mvWorldManager.deleteWorld(worldName)
+        multiverseCore.mvWorldManager.deleteWorld(worldName, true, true)
         File(Bukkit.getWorldContainer(), worldName).deleteRecursively()
         arenas.remove(worldName)
     }
@@ -105,7 +139,7 @@ object ArenaManager {
         var deleted = 0
 
         val mvWorldsToDelete = multiverseCore.mvWorldManager.mvWorlds
-            .filter { it.name.startsWith("cw_game_") && !activeWorlds.contains(it.name) }
+            .filter { (it.name.startsWith("cw_game_") || it.name.startsWith("cw_ceremony_")) && !activeWorlds.contains(it.name) }
             .map { it.name }
             .toSet()
 
@@ -126,7 +160,7 @@ object ArenaManager {
         // Also remove folders without a registered mv-world (rare, but happens after hard crashes)
         val container = Bukkit.getWorldContainer()
         container.listFiles { f ->
-            f.isDirectory && f.name.startsWith("cw_game_") && !activeWorlds.contains(f.name)
+            f.isDirectory && (f.name.startsWith("cw_game_") || f.name.startsWith("cw_ceremony_")) && !activeWorlds.contains(f.name)
         }?.forEach { dir ->
             try {
                 if (dir.deleteRecursively()) {
@@ -159,7 +193,7 @@ object ArenaManager {
 
     private fun deleteExistingArenas() {
         val mvWorldsToDelete = multiverseCore.mvWorldManager.mvWorlds
-            .filter { it.name.startsWith("cw_game_") }
+            .filter { it.name.startsWith("cw_game_") || it.name.startsWith("cw_ceremony_") }
             .map { it.name }
             .toSet()
 
@@ -177,7 +211,7 @@ object ArenaManager {
         }
 
         val worldContainer = Bukkit.getWorldContainer()
-        worldContainer.listFiles { f -> f.isDirectory && f.name.startsWith("cw_game_") }?.forEach {
+        worldContainer.listFiles { f -> f.isDirectory && (f.name.startsWith("cw_game_") || f.name.startsWith("cw_ceremony_")) }?.forEach {
             PluginManager.getLogger().info("Удаление оставшейся папки: ${it.name}")
             it.deleteRecursively()
         }

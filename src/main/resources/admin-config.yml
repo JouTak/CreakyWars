@@ -19,3 +19,16 @@ players:
 world:
   border-size: 261.0
   template-name: game
+
+ceremony:
+  enabled: true
+  template-name: cw_ceremony
+  duration-seconds: 10
+  wind-charges: 16
+  # 4 podiums for places 1..4. Format: [minX, y, minZ, maxX, maxZ, yaw]
+  # Each podium should be 2x2 blocks (4 blocks total) so players can stand together.
+  podiums:
+    - [0, 64, 0, 1, 1, 180]
+    - [3, 64, 0, 4, 1, 180]
+    - [6, 64, 0, 7, 1, 180]
+    - [9, 64, 0, 10, 1, 180]

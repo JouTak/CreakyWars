@@ -10,6 +10,7 @@ import org.bukkit.command.TabCompleter
 import org.bukkit.entity.Player
 import ru.joutak.creakywars.arenas.ArenaManager
 import ru.joutak.creakywars.arenas.ArenaState
+import ru.joutak.creakywars.ceremony.CeremonyController
 import ru.joutak.creakywars.config.AdminConfig
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.config.MapConfig
@@ -275,7 +276,11 @@ class CreakyCommands : CommandExecutor, TabCompleter {
 
                 when (action) {
                     "cleanup", "cleanuporphans", "orphans" -> {
-                        val activeWorlds = GameManager.getActiveGames().map { it.arena.worldName }.toSet()
+                        val activeWorlds = mutableSetOf<String>()
+                        GameManager.getActiveGames().forEach { game ->
+                            game.arena.worldName?.let { activeWorlds.add(it) }
+                        }
+                        activeWorlds.addAll(CeremonyController.getActiveWorldNames())
                         val deleted = ArenaManager.cleanupOrphans(activeWorlds)
                         sender.sendMessage("§aОк. Удалено сиротских арен: §e$deleted§a.")
                     }

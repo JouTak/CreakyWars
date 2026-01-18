@@ -2,6 +2,7 @@ package ru.joutak.creakywars
 
 import org.bukkit.plugin.java.JavaPlugin
 import ru.joutak.creakywars.arenas.ArenaManager
+import ru.joutak.creakywars.ceremony.CeremonyController
 import ru.joutak.creakywars.commands.CreakyCommands
 import ru.joutak.creakywars.config.AdminConfig
 import ru.joutak.creakywars.config.GameConfig
@@ -85,5 +86,6 @@ class CreakyWars : JavaPlugin() {
         pm.registerEvents(TraderListener(), this)
         pm.registerEvents(CreakingListener(), this)
         pm.registerEvents(UpgradeListener(), this)
+        pm.registerEvents(CeremonyController, this)
     }
 }

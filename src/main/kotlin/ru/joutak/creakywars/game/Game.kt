@@ -5,6 +5,11 @@ import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.Sound
+import ru.joutak.creakywars.ceremony.CeremonyController
+import ru.joutak.creakywars.arenas.ArenaManager
+import org.bukkit.inventory.meta.LeatherArmorMeta
+import org.bukkit.World
+import org.bukkit.Color
 import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
 import org.bukkit.block.data.Directional
@@ -77,6 +82,12 @@ class Game(
     private val leftAtMs = mutableMapOf<java.util.UUID, Long>()
     private val lastKnownName = mutableMapOf<java.util.UUID, String>()
     private val departedStats = mutableMapOf<java.util.UUID, RecordedPlayerStats>()
+
+    private val eliminatedAtTick = mutableMapOf<Int, Long>()
+
+    private var ceremonyWorldName: String? = null
+    private var ceremonyTask: BukkitTask? = null
+    private val ceremonyParticipants = mutableSetOf<UUID>()
 
     val players: List<Player>
         get() = playerData.keys.mapNotNull { Bukkit.getPlayer(it) }
@@ -285,7 +296,7 @@ class Game(
         } else {
             broadcastMessage("§cИгра принудительно завершена администратором!")
         }
-        endGame(null)
+        endGame(null, recordResults = false, allowCeremony = false)
     }
 
     fun addSpectator(player: Player): Boolean {
@@ -609,6 +620,7 @@ class Game(
         }
 
         if (gameTick % 20L == 0L) {
+            updateEliminations()
             // Scoreboard should keep updating even without core-destroy events (e.g. team elimination on death).
             teamScoreboard.update()
             checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
@@ -920,113 +932,288 @@ class Game(
             }
             aliveTeams.isEmpty() -> {
                 PluginManager.getLogger().info("Игра #${arena.id}: ничья, все команды выбыли")
-                endGame(null)
+                endGame(null, recordResults = false, allowCeremony = false)
             }
             phasesFinished && aliveTeams.size > 1 -> {
                 PluginManager.getLogger().info("Игра #${arena.id}: ничья по истечении фаз")
-                endGame(null)
+                endGame(null, recordResults = false, allowCeremony = false)
             }
         }
     }
 
 
-    private fun endGame(winnerTeam: Team?) {
-        // Allow re-enter: if something went wrong with scheduled cleanup, we can reschedule it.
-        if (arena.state == ArenaState.ENDING) {
-            cleanupTask?.cancel()
-            cleanupTask = null
-        }
-
-        arena.state = ArenaState.ENDING
-
-        try {
-            startingTask?.cancel()
-        } catch (_: Exception) {
-        }
-        startingTask = null
-
-        try {
-            gameTask?.cancel()
-        } catch (_: Exception) {
-        }
-        gameTask = null
-
-        respawnTimers.values.toList().forEach {
-            try {
-                it.cancel()
-            } catch (_: Exception) {
+    private fun updateEliminations() {
+        // Track first moment when a team becomes eliminated, to build 2..4 places for ceremony
+        teams.filter { it.players.isNotEmpty() }.forEach { team ->
+            if (!eliminatedAtTick.containsKey(team.id) && team.isEliminated(this)) {
+                eliminatedAtTick[team.id] = gameTick
             }
         }
-        respawnTimers.clear()
-
-        pendingLastChanceRespawn.clear()
-        awaitingRespawnSetup.clear()
-
-        try {
-            dayNightCycle.stop()
-        } catch (_: Exception) {
-        }
-
-        try {
-            ResourceSpawner.stopSpawning(this)
-        } catch (_: Exception) {
-        }
-
-        try {
-            TraderManager.removeTraders(this)
-        } catch (_: Exception) {
-        }
-
-        try {
-            BrainStationManager.remove(this)
-        } catch (_: Exception) {
-        }
-
-        try {
-            disableListeners()
-        } catch (_: Exception) {
-        }
-
-        if (winnerTeam != null) {
-            val winnerName = "${winnerTeam.color}${winnerTeam.name}"
-
-            // Titles should be personal: winners see "Победа", everyone else sees "Поражение" / neutral.
-            getAudiencePlayers().forEach { player ->
-                val data = getPlayerData(player)
-                when {
-                    data?.team?.id == winnerTeam.id -> MessageUtils.sendTitle(player, "§6Победа!", "§e$winnerName")
-                    spectators.contains(player.uniqueId) || data?.team == null ->
-                        MessageUtils.sendTitle(player, "§eИгра окончена", "§7Победитель: §e$winnerName")
-                    else -> MessageUtils.sendTitle(player, "§cПоражение!", "§7Победитель: §e$winnerName")
-                }
-            }
-
-            broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
-            broadcastMessage("§6§lПОБЕДИТЕЛЬ: $winnerName")
-            displayStats()
-            sendResults(winnerTeam)
-            broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
-
-            winnerTeam.getOnlinePlayers().forEach { player ->
-                try {
-                    player.playSound(player.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f)
-                } catch (_: Exception) {
-                }
-            }
-        } else {
-            broadcastTitle("§eНичья!", "§7Никто не победил")
-            broadcastMessage("§7Игра завершилась ничьей!")
-            displayStats()
-            sendResults(null)
-        }
-
-        // Ensure the game always proceeds to full cleanup and removal from GameManager.
-        cleanupTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
-            cleanup()
-        }, 200L)
     }
 
-    fun disableListeners() {
+private fun endGame(winnerTeam: Team?, recordResults: Boolean = true, allowCeremony: Boolean = true) {
+    // Allow re-enter: if something went wrong with scheduled cleanup, we can reschedule it.
+    if (arena.state == ArenaState.ENDING) {
+        try { cleanupTask?.cancel() } catch (_: Exception) {}
+        cleanupTask = null
+        try { ceremonyTask?.cancel() } catch (_: Exception) {}
+        ceremonyTask = null
+
+        val cw = ceremonyWorldName
+        if (cw != null) {
+            // Drop all bounds just in case
+            ceremonyParticipants.mapNotNull { Bukkit.getPlayer(it) }.forEach { CeremonyController.clearPlayer(it) }
+            CeremonyController.clearWorld(cw)
+            ceremonyParticipants.clear()
+        }
+    }
+
+    arena.state = ArenaState.ENDING
+
+    try { startingTask?.cancel() } catch (_: Exception) {}
+    startingTask = null
+
+    try { gameTask?.cancel() } catch (_: Exception) {}
+    gameTask = null
+
+    respawnTimers.values.toList().forEach { try { it.cancel() } catch (_: Exception) {} }
+    respawnTimers.clear()
+
+    pendingLastChanceRespawn.clear()
+    awaitingRespawnSetup.clear()
+
+    try { dayNightCycle.stop() } catch (_: Exception) {}
+    try { ResourceSpawner.stopSpawning(this) } catch (_: Exception) {}
+    try { TraderManager.removeTraders(this) } catch (_: Exception) {}
+    try { BrainStationManager.remove(this) } catch (_: Exception) {}
+
+    try { phaseBossBar.remove() } catch (_: Exception) {}
+
+    try { disableListeners() } catch (_: Exception) {}
+
+    // Remove spectators from match world before ceremony
+    spectatorsOnline.toList().forEach {
+        try { removeSpectator(it, silent = true, forceLobby = true) } catch (_: Exception) {}
+    }
+
+    if (winnerTeam != null) {
+        val winnerName = "${winnerTeam.color}${winnerTeam.name}"
+
+        // Titles should be personal: winners see "Победа", everyone else sees "Поражение" / neutral.
+        getAudiencePlayers().forEach { player ->
+            val data = getPlayerData(player)
+            when {
+                data?.team?.id == winnerTeam.id -> MessageUtils.sendTitle(player, "§6Победа!", "§e$winnerName")
+                spectators.contains(player.uniqueId) || data?.team == null ->
+                    MessageUtils.sendTitle(player, "§eИгра окончена", "§7Победитель: §e$winnerName")
+                else -> MessageUtils.sendTitle(player, "§cПоражение!", "§7Победитель: §e$winnerName")
+            }
+        }
+
+        broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
+        broadcastMessage("§6§lПОБЕДИТЕЛЬ: $winnerName")
+        displayStats()
+        broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
+
+        winnerTeam.getOnlinePlayers().forEach { player ->
+            try { player.playSound(player.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f) } catch (_: Exception) {}
+        }
+    } else {
+        broadcastTitle("§eНичья!", "§7Никто не победил")
+        broadcastMessage("§7Игра завершилась ничьей!")
+        displayStats()
+    }
+
+    val ceremonyPlanned =
+        winnerTeam != null &&
+        recordResults &&
+        allowCeremony &&
+        AdminConfig.ceremonyEnabled &&
+        AdminConfig.ceremonyPodiums.size >= 4 &&
+        AdminConfig.ceremonyTemplateWorldName.isNotBlank() &&
+        players.isNotEmpty()
+
+    if (ceremonyPlanned && winnerTeam != null) {
+        val started = try { startCeremony(winnerTeam) } catch (_: Exception) { false }
+        if (started) {
+            val ticks = (AdminConfig.ceremonyDurationSeconds.coerceAtLeast(1) * 20L)
+            ceremonyTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
+                finishCeremony(winnerTeam, recordResults)
+            }, ticks)
+            return
+        }
+    }
+
+    if (recordResults) {
+        sendResults(winnerTeam)
+    }
+
+    // Ensure the game always proceeds to full cleanup and removal from GameManager.
+    cleanupTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
+        cleanup()
+    }, 200L)
+}
+
+private fun startCeremony(winnerTeam: Team): Boolean {
+    val template = AdminConfig.ceremonyTemplateWorldName
+    val podiums = AdminConfig.ceremonyPodiums
+    if (template.isBlank() || podiums.size < 4) return false
+
+    val worldName = "cw_ceremony_${arena.mapConfig.mapName}_${arena.id}_${matchId.toString().substring(0, 8)}"
+
+    val world = try {
+        ArenaManager.cloneWorld(template, worldName)
+    } catch (e: Exception) {
+        PluginManager.getLogger().warning("Не удалось клонировать церемониальный мир '$template' -> '$worldName': ${e.message}")
+        return false
+    }
+
+    ceremonyWorldName = worldName
+    ceremonyParticipants.clear()
+
+    val order = buildCeremonyOrder(winnerTeam)
+    if (order.isEmpty()) {
+        try { ArenaManager.deleteWorldByName(worldName) } catch (_: Exception) {}
+        ceremonyWorldName = null
+        return false
+    }
+
+    for (placeIndex in 0 until 4) {
+        val team = order.getOrNull(placeIndex) ?: continue
+        val podium = podiums[placeIndex]
+        val bounds = podium.toBounds()
+
+        val online = team.getOnlinePlayers()
+        online.forEachIndexed { idx, player ->
+            prepareCeremonyPlayer(player, team)
+            val loc = podium.getSpawnLocation(world, idx)
+            player.teleport(loc)
+            CeremonyController.setPlayerRegion(player, worldName, bounds)
+            ceremonyParticipants.add(player.uniqueId)
+        }
+    }
+
+    return true
+}
+
+private fun buildCeremonyOrder(winnerTeam: Team): List<Team> {
+    val participating = teams.filter { it.players.isNotEmpty() }
+    if (participating.isEmpty()) return emptyList()
+
+    // Ensure eliminated ticks are filled for already eliminated teams
+    participating.forEach { team ->
+        if (team.id != winnerTeam.id && team.isEliminated(this) && !eliminatedAtTick.containsKey(team.id)) {
+            eliminatedAtTick[team.id] = gameTick
+        }
+    }
+
+    return participating
+        .sortedWith(
+            compareByDescending<Team> { team ->
+                if (team.id == winnerTeam.id) Long.MAX_VALUE else (eliminatedAtTick[team.id] ?: Long.MIN_VALUE)
+            }.thenBy { it.id }
+        )
+        .take(4)
+}
+
+private fun prepareCeremonyPlayer(player: Player, team: Team) {
+    try { player.inventory.clear() } catch (_: Exception) {}
+    try {
+        player.inventory.helmet = null
+        player.inventory.chestplate = null
+        player.inventory.leggings = null
+        player.inventory.boots = null
+        player.inventory.setItemInOffHand(null)
+    } catch (_: Exception) {}
+
+    try {
+        player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
+    } catch (_: Exception) {}
+
+    try {
+        player.fireTicks = 0
+        player.health = player.maxHealth
+        player.foodLevel = 20
+        player.saturation = 20f
+    } catch (_: Exception) {}
+
+    try { player.gameMode = GameMode.ADVENTURE } catch (_: Exception) {}
+
+    val color = when (team.id) {
+        0 -> Color.fromRGB(255, 85, 85)
+        1 -> Color.fromRGB(85, 85, 255)
+        2 -> Color.fromRGB(85, 255, 85)
+        3 -> Color.fromRGB(255, 255, 85)
+        else -> Color.fromRGB(200, 200, 200)
+    }
+
+    fun leather(mat: Material): ItemStack {
+        val it = ItemStack(mat)
+        val meta = it.itemMeta as? LeatherArmorMeta
+        meta?.setColor(color)
+        meta?.setDisplayName("${team.color}Комбинезон")
+        meta?.isUnbreakable = true
+        it.itemMeta = meta
+        return it
+    }
+
+    try {
+        player.inventory.helmet = leather(Material.LEATHER_HELMET)
+        player.inventory.chestplate = leather(Material.LEATHER_CHESTPLATE)
+        player.inventory.leggings = leather(Material.LEATHER_LEGGINGS)
+        player.inventory.boots = leather(Material.LEATHER_BOOTS)
+    } catch (_: Exception) {}
+
+    val sword = ItemStack(Material.STONE_SWORD)
+    val swordMeta = sword.itemMeta
+    swordMeta?.setDisplayName("§6Медный меч")
+    swordMeta?.isUnbreakable = true
+    sword.itemMeta = swordMeta
+
+    try {
+        player.inventory.addItem(sword)
+    } catch (_: Exception) {}
+
+    val charges = AdminConfig.ceremonyWindCharges.coerceAtLeast(0)
+    if (charges > 0) {
+        try {
+            player.inventory.addItem(ItemStack(Material.WIND_CHARGE, charges))
+        } catch (_: Exception) {}
+    }
+
+    try { player.inventory.heldItemSlot = 0 } catch (_: Exception) {}
+}
+
+private fun finishCeremony(winnerTeam: Team?, recordResults: Boolean) {
+    val worldName = ceremonyWorldName
+    ceremonyWorldName = null
+
+    val lobby = Bukkit.getWorlds().firstOrNull()?.spawnLocation
+    val participants = ceremonyParticipants.toList()
+    ceremonyParticipants.clear()
+
+    participants.mapNotNull { Bukkit.getPlayer(it) }.forEach { player ->
+        try { CeremonyController.clearPlayer(player) } catch (_: Exception) {}
+        if (lobby != null) {
+            try { player.teleport(lobby) } catch (_: Exception) {}
+        }
+    }
+
+    if (worldName != null) {
+        try { CeremonyController.clearWorld(worldName) } catch (_: Exception) {}
+        try { ArenaManager.deleteWorldByName(worldName) } catch (_: Exception) {}
+    }
+
+    if (recordResults) {
+        sendResults(winnerTeam)
+    }
+
+    cleanupTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
+        cleanup()
+    }, 1L)
+}
+
+fun disableListeners() {
         HandlerList.unregisterAll(teamChestListener)
     }
 
@@ -1269,7 +1456,7 @@ class Game(
 
     fun forceEnd() {
         broadcastMessage("§cИгра принудительно завершена администратором!")
-        endGame(null)
+        endGame(null, recordResults = false, allowCeremony = false)
     }
 
     fun broadcastMessage(message: String) {
