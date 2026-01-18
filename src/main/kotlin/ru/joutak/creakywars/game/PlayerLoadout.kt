@@ -180,6 +180,20 @@ data class PlayerLoadout(
         sword = baseSword
     }
 
+    fun createCopperSword(): ItemStack {
+        val item = ItemStack(Material.STONE_SWORD)
+        val meta = item.itemMeta
+        if (meta != null) {
+            @Suppress("DEPRECATION")
+            meta.setDisplayName("§6Медный меч")
+            item.itemMeta = meta
+        }
+
+        makeUnbreakable(item)
+        applyTeamEnchants(item)
+        return item
+    }
+
     fun addOrReplaceTool(tool: ItemStack) {
         val item = makeUnbreakable(tool.clone())
         applyTeamEnchants(item)

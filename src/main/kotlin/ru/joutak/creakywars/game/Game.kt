@@ -1139,39 +1139,17 @@ private fun prepareCeremonyPlayer(player: Player, team: Team) {
 
     try { player.gameMode = GameMode.ADVENTURE } catch (_: Exception) {}
 
-    val color = when (team.id) {
-        0 -> Color.fromRGB(255, 85, 85)
-        1 -> Color.fromRGB(85, 85, 255)
-        2 -> Color.fromRGB(85, 255, 85)
-        3 -> Color.fromRGB(255, 255, 85)
-        else -> Color.fromRGB(200, 200, 200)
-    }
-
-    fun leather(mat: Material): ItemStack {
-        val it = ItemStack(mat)
-        val meta = it.itemMeta as? LeatherArmorMeta
-        meta?.setColor(color)
-        meta?.setDisplayName("${team.color}Комбинезон")
-        meta?.isUnbreakable = true
-        it.itemMeta = meta
-        return it
-    }
+    val loadout = getPlayerData(player)?.loadout ?: PlayerLoadout(player, team)
 
     try {
-        player.inventory.helmet = leather(Material.LEATHER_HELMET)
-        player.inventory.chestplate = leather(Material.LEATHER_CHESTPLATE)
-        player.inventory.leggings = leather(Material.LEATHER_LEGGINGS)
-        player.inventory.boots = leather(Material.LEATHER_BOOTS)
+        player.inventory.helmet = loadout.getStoredArmor("helmet")?.clone()
+        player.inventory.chestplate = loadout.getStoredArmor("chestplate")?.clone()
+        player.inventory.leggings = loadout.getStoredArmor("leggings")?.clone()
+        player.inventory.boots = loadout.getStoredArmor("boots")?.clone()
     } catch (_: Exception) {}
 
-    val sword = ItemStack(Material.STONE_SWORD)
-    val swordMeta = sword.itemMeta
-    swordMeta?.setDisplayName("§6Медный меч")
-    swordMeta?.isUnbreakable = true
-    sword.itemMeta = swordMeta
-
     try {
-        player.inventory.addItem(sword)
+        player.inventory.addItem(loadout.createCopperSword())
     } catch (_: Exception) {}
 
     val charges = AdminConfig.ceremonyWindCharges.coerceAtLeast(0)

@@ -116,7 +116,7 @@ trades:
   stone_sword:
     cost: "rubber_low:10"
     result: "STONE_SWORD:1"
-    display-name: "Каменный меч"
+    display-name: "Медный меч"
     category: "swords"
 
   iron_sword:
@@ -179,13 +179,13 @@ trades:
   stone_pickaxe:
     cost: "rubber_low:25"
     result: "STONE_PICKAXE:1"
-    display-name: "Каменная кирка"
+    display-name: "Медная кирка"
     category: "tools"
 
   stone_axe:
     cost: "rubber_low:30"
     result: "STONE_AXE:1"
-    display-name: "Каменный топор"
+    display-name: "Медный топор"
     category: "tools"
 
   iron_pickaxe:
