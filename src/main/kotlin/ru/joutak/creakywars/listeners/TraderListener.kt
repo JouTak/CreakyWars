@@ -10,6 +10,7 @@ import org.bukkit.inventory.EquipmentSlot
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.gui.ShopGui
 import ru.joutak.creakywars.utils.PluginManager
+import ru.joutak.creakywars.utils.UseSuppressor
 
 @Suppress("DEPRECATION")
 class TraderListener : Listener {
@@ -38,6 +39,9 @@ class TraderListener : Listener {
         if (entity !is Illusioner) return
         val name = entity.customName ?: return
         if (!name.contains("§6§lТорговец кирпичами")) return
+
+        // Prevent "use" items (Wind Charge / Fire Charge, etc.) from activating on the same right-click.
+        UseSuppressor.mark(player.uniqueId)
 
         event.isCancelled = true
 

@@ -81,6 +81,7 @@ class Game(
     val matchId: java.util.UUID = java.util.UUID.randomUUID()
     val startedAtMs: Long = System.currentTimeMillis()
     private var resultsSent: Boolean = false
+    private var pendingMatchResult: MatchResult? = null
 
     private val joinedAtMs = mutableMapOf<java.util.UUID, Long>()
     private val leftAtMs = mutableMapOf<java.util.UUID, Long>()
@@ -1053,7 +1054,7 @@ class Game(
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
             broadcastMessage("§6§lПОБЕДИТЕЛЬ: $winnerName")
             displayStats()
-            sendResults(winnerTeam)
+            prepareResults(winnerTeam)
             broadcastMessage("§a▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
 
             winnerTeam.getOnlinePlayers().forEach { player ->
@@ -1066,7 +1067,7 @@ class Game(
             broadcastTitle("§eНичья!", "§7Никто не победил")
             broadcastMessage("§7Игра завершилась ничьей!")
             displayStats()
-            sendResults(null)
+            prepareResults(null)
         }
 
         val ceremonyStarted = tryStartFinalCeremony()
@@ -1127,7 +1128,11 @@ class Game(
 
             if (podium == null) {
                 // If something is odd (no team), treat as spectator.
-                val area = spectatorAreas.getOrNull(spectatorSlot % spectatorAreas.size) ?: continue
+                val area = if (spectatorAreas.isNotEmpty()) spectatorAreas[spectatorSlot % spectatorAreas.size] else null
+                if (area == null) {
+                    // No configured spectator areas; skip placing this player
+                    continue
+                }
                 teleportToCeremonySpot(player, world, area, spectatorSlot, isSpectator = true)
                 spectatorSlot++
                 continue
@@ -1145,7 +1150,8 @@ class Game(
 
         // Place spectators in their own configured areas.
         for (spectator in spectatorsOnline) {
-            val area = spectatorAreas.getOrNull(spectatorSlot % spectatorAreas.size) ?: continue
+            val area = if (spectatorAreas.isNotEmpty()) spectatorAreas[spectatorSlot % spectatorAreas.size] else null
+            if (area == null) continue
             teleportToCeremonySpot(spectator, world, area, spectatorSlot, isSpectator = true)
             spectatorSlot++
         }
@@ -1268,10 +1274,8 @@ class Game(
         }
         return placements
     }
-
-    private fun sendResults(winnerTeam: Team?) {
-        if (resultsSent) return
-        resultsSent = true
+    private fun prepareResults(winnerTeam: Team?) {
+        if (pendingMatchResult != null) return
 
         val endedAtMs = System.currentTimeMillis()
         val winnerTeamId = winnerTeam?.id
@@ -1395,10 +1399,17 @@ class Game(
             teams = teamResults,
             players = playerResults,
         )
+        pendingMatchResult = result
+    }
 
+    private fun flushResultsIfNeeded() {
+        if (resultsSent) return
+        val result = pendingMatchResult ?: return
+        resultsSent = true
         try {
             MiniGamesAPI.recordMatchResult(result)
-        } catch (_: Throwable) {
+        } catch (e: Exception) {
+            PluginManager.getLogger().warning("Failed to record match result: ${e.message}")
         }
     }
 
@@ -1443,6 +1454,9 @@ class Game(
                 }
             }
         }
+
+        // Send results to MiniGamesAPI only when we're ready to let it kick/teleport players (after end screen / ceremony).
+        flushResultsIfNeeded()
 
         // Always attempt to remove the game from GameManager even if some cleanup step fails.
         try {

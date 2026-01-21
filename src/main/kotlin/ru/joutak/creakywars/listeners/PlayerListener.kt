@@ -11,6 +11,7 @@ import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
+import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.*
 import org.bukkit.Bukkit
@@ -19,6 +20,7 @@ import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.game.PlayerLoadout
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
+import ru.joutak.creakywars.utils.UseSuppressor
 import ru.joutak.minigames.managers.MatchmakingManager
 
 class PlayerListener : Listener {
@@ -27,6 +29,26 @@ class PlayerListener : Listener {
         if (item == null) return false
         if (item.type.isAir) return false
         return item.type.name.endsWith("_SWORD")
+    }
+
+    private fun isProtectedLoadoutItem(item: org.bukkit.inventory.ItemStack?): Boolean {
+        if (item == null) return false
+        if (item.type.isAir) return false
+
+        val t = item.type
+        val name = t.name
+        val isToolOrWeapon =
+            name.endsWith("_SWORD") ||
+            name.endsWith("_PICKAXE") ||
+            name.endsWith("_AXE") ||
+            name.endsWith("_SHOVEL") ||
+            name.endsWith("_HOE") ||
+            t == Material.BOW ||
+            t == Material.CROSSBOW
+
+        if (!isToolOrWeapon) return false
+        val meta = item.itemMeta ?: return false
+        return meta.isUnbreakable
     }
 
     private fun scheduleEnsureWoodenSword(player: Player) {
@@ -54,6 +76,8 @@ class PlayerListener : Listener {
     fun onPlayerQuit(event: PlayerQuitEvent) {
         val player = event.player
 
+        UseSuppressor.clear(player.uniqueId)
+
         try {
             MatchmakingManager.removePlayer(player)
         } catch (_: Exception) {
@@ -79,6 +103,8 @@ class PlayerListener : Listener {
     @EventHandler
     fun onPlayerKick(event: PlayerKickEvent) {
         val player = event.player
+
+        UseSuppressor.clear(player.uniqueId)
 
         try {
             MatchmakingManager.removePlayer(player)
@@ -130,6 +156,21 @@ class PlayerListener : Listener {
     }
 
     
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    fun onSuppressItemUseWhileTraderClick(event: PlayerInteractEvent) {
+        val player = event.player
+        if (!UseSuppressor.isSuppressed(player.uniqueId)) return
+
+        // Suppress "use" actions on the same click that opens the trader GUI.
+        if (event.action != Action.RIGHT_CLICK_AIR && event.action != Action.RIGHT_CLICK_BLOCK) return
+
+        event.isCancelled = true
+        // Deny the item use explicitly, otherwise Paper may still trigger "use" items.
+        event.setUseItemInHand(org.bukkit.event.Event.Result.DENY)
+        event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY)
+    }
+
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onSwapElytraUse(event: PlayerInteractEvent) {
@@ -188,7 +229,64 @@ class PlayerListener : Listener {
         player.updateInventory()
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+        @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    fun onInventoryClickPreventStoringBoundItems(event: InventoryClickEvent) {
+        val player = event.whoClicked as? Player ?: return
+        val game = GameManager.getGame(player) ?: return
+        if (game.isSpectator(player.uniqueId)) return
+        if (player.gameMode != GameMode.SURVIVAL) return
+
+        val topSize = event.view.topInventory.size
+        val raw = event.rawSlot
+
+        // Placing a bound item into the top inventory (chest, etc.) via cursor click or number-key swap.
+        if (raw >= 0 && raw < topSize) {
+            if (isProtectedLoadoutItem(event.cursor)) {
+                event.isCancelled = true
+                player.updateInventory()
+                return
+            }
+
+            if (event.hotbarButton >= 0) {
+                val hotbar = player.inventory.getItem(event.hotbarButton)
+                if (isProtectedLoadoutItem(hotbar)) {
+                    event.isCancelled = true
+                    player.updateInventory()
+                    return
+                }
+            }
+        }
+
+        // Shift-click move from player inventory to the top inventory.
+        val clickedInv = event.clickedInventory ?: return
+        if (clickedInv == player.inventory) {
+            val moving = event.isShiftClick || event.action == InventoryAction.MOVE_TO_OTHER_INVENTORY
+            if (moving && isProtectedLoadoutItem(event.currentItem)) {
+                event.isCancelled = true
+                player.updateInventory()
+                return
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    fun onInventoryDragPreventStoringBoundItems(event: InventoryDragEvent) {
+        val player = event.whoClicked as? Player ?: return
+        val game = GameManager.getGame(player) ?: return
+        if (game.isSpectator(player.uniqueId)) return
+        if (player.gameMode != GameMode.SURVIVAL) return
+
+        val cursor = event.oldCursor
+        if (!isProtectedLoadoutItem(cursor)) return
+
+        val topSize = event.view.topInventory.size
+        if (event.rawSlots.any { it < topSize }) {
+            event.isCancelled = true
+            player.updateInventory()
+        }
+    }
+
+@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onInventoryClickEnsureSword(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
         val game = GameManager.getGame(player) ?: return

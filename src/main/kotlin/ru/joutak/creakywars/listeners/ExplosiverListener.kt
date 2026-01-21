@@ -14,6 +14,7 @@ import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.entity.EntityExplodeEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.metadata.FixedMetadataValue
 import org.bukkit.metadata.MetadataValue
 import org.bukkit.scheduler.BukkitTask
@@ -23,6 +24,7 @@ import ru.joutak.creakywars.game.Game
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.game.Team
 import ru.joutak.creakywars.utils.PluginManager
+import ru.joutak.creakywars.utils.UseSuppressor
 import kotlin.math.min
 
 class ExplosivesListener : Listener {
@@ -79,17 +81,25 @@ class ExplosivesListener : Listener {
         val game = GameManager.getGame(player)
 
         if (game == null || !ArenaManager.isArena(player.world)) return
+        if (UseSuppressor.isSuppressed(player.uniqueId)) return
         if (event.action != Action.RIGHT_CLICK_AIR && event.action != Action.RIGHT_CLICK_BLOCK) return
 
-        val item = player.inventory.itemInMainHand
-        if (item.type != Material.FIRE_CHARGE) return
+        val hand = event.hand ?: return
+        if (hand != EquipmentSlot.HAND && hand != EquipmentSlot.OFF_HAND) return
+
+        val invItem = if (hand == EquipmentSlot.OFF_HAND) player.inventory.itemInOffHand else player.inventory.itemInMainHand
+        if (invItem.type != Material.FIRE_CHARGE) return
 
         event.isCancelled = true
 
-        if (item.amount > 1) {
-            item.amount--
+        if (invItem.amount > 1) {
+            invItem.amount--
         } else {
-            player.inventory.setItemInMainHand(null)
+            if (hand == EquipmentSlot.OFF_HAND) {
+                player.inventory.setItemInOffHand(null)
+            } else {
+                player.inventory.setItemInMainHand(null)
+            }
         }
 
         val fireball = player.launchProjectile(Fireball::class.java).apply {
