@@ -6,9 +6,13 @@ import org.bukkit.entity.Player
 import org.bukkit.scoreboard.DisplaySlot
 import org.bukkit.scoreboard.Objective
 import org.bukkit.scoreboard.Scoreboard
+import org.bukkit.scoreboard.Team as BukkitTeam
 import java.util.UUID
 
 class TeamScoreboard(private val game: Game) {
+
+    private val locatorTeamPrefix = "cw_loc_"
+    private val locatorSpectatorTeamName = "cw_loc_spec"
 
     private data class BoardState(
         val scoreboard: Scoreboard,
@@ -65,6 +69,9 @@ class TeamScoreboard(private val game: Game) {
         val objective = scoreboard.registerNewObjective("cw_teams", "dummy", "§6§lCREAKY WARS")
         objective.displaySlot = DisplaySlot.SIDEBAR
 
+        // Locator bar uses scoreboard teams as an override for player indicator colors.
+        ensureLocatorTeams(scoreboard)
+
         states[uuid] = BoardState(scoreboard, objective, previous)
         player.scoreboard = scoreboard
     }
@@ -97,7 +104,66 @@ class TeamScoreboard(private val game: Game) {
             score--
         }
 
+        // Keep locator-team membership in sync for this viewer.
+        updateLocatorTeams(state.scoreboard)
+
         state.lastEntries = entries.toSet()
+    }
+
+    private fun ensureLocatorTeams(scoreboard: Scoreboard) {
+        for (team in game.teams) {
+            val name = "$locatorTeamPrefix${team.id}"
+            val t = scoreboard.getTeam(name) ?: scoreboard.registerNewTeam(name)
+            t.color = team.color
+            t.setOption(BukkitTeam.Option.NAME_TAG_VISIBILITY, BukkitTeam.OptionStatus.ALWAYS)
+            t.setOption(BukkitTeam.Option.COLLISION_RULE, BukkitTeam.OptionStatus.ALWAYS)
+        }
+
+        val spec = scoreboard.getTeam(locatorSpectatorTeamName) ?: scoreboard.registerNewTeam(locatorSpectatorTeamName)
+        spec.color = ChatColor.AQUA
+        spec.setOption(BukkitTeam.Option.NAME_TAG_VISIBILITY, BukkitTeam.OptionStatus.ALWAYS)
+        spec.setOption(BukkitTeam.Option.COLLISION_RULE, BukkitTeam.OptionStatus.ALWAYS)
+    }
+
+    private fun updateLocatorTeams(scoreboard: Scoreboard) {
+        ensureLocatorTeams(scoreboard)
+
+        // Desired entries per locator team for this viewer.
+        val desiredByTeamId = HashMap<Int, MutableSet<String>>(4)
+        for (t in game.teams) desiredByTeamId[t.id] = LinkedHashSet()
+
+        for (p in game.players) {
+            val data = game.getPlayerData(p) ?: continue
+            val teamId = data.team?.id ?: continue
+            desiredByTeamId[teamId]?.add(p.name)
+        }
+
+        // Spectators also get a stable color (matches the scoreboard "SPECTATE" label).
+        val desiredSpectators = LinkedHashSet<String>()
+        for (s in game.spectatorsOnline) {
+            desiredSpectators.add(s.name)
+        }
+
+        // Remove stale entries first.
+        for (t in game.teams) {
+            val bukkitTeam = scoreboard.getTeam("$locatorTeamPrefix${t.id}") ?: continue
+            val desired = desiredByTeamId[t.id] ?: emptySet()
+            val toRemove = bukkitTeam.entries.filter { it !in desired }
+            toRemove.forEach { bukkitTeam.removeEntry(it) }
+        }
+        scoreboard.getTeam(locatorSpectatorTeamName)?.let { bukkitTeam ->
+            val toRemove = bukkitTeam.entries.filter { it !in desiredSpectators }
+            toRemove.forEach { bukkitTeam.removeEntry(it) }
+        }
+
+        // Add / move entries to the correct team.
+        for ((teamId, desired) in desiredByTeamId) {
+            val bukkitTeam = scoreboard.getTeam("$locatorTeamPrefix$teamId") ?: continue
+            desired.forEach { bukkitTeam.addEntry(it) }
+        }
+        scoreboard.getTeam(locatorSpectatorTeamName)?.let { bukkitTeam ->
+            desiredSpectators.forEach { bukkitTeam.addEntry(it) }
+        }
     }
 
     private fun buildLines(viewer: Player): List<String> {

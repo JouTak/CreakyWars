@@ -32,3 +32,7 @@ ceremony:
     - [3, 64, 0, 4, 1, 180]
     - [6, 64, 0, 7, 1, 180]
     - [9, 64, 0, 10, 1, 180]
+
+  # Where to place / keep spectators during ceremony. Format: [minX, y, minZ, maxX, maxZ, yaw]
+  spectators:
+    - [12, 64, 0, 15, 3, 180]

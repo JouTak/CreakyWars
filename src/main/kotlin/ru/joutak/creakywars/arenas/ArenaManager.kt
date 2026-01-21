@@ -39,7 +39,10 @@ object ArenaManager {
     }
 
     fun isArena(world: World): Boolean {
-        return arenas.containsKey(world.name)
+        if (arenas.containsKey(world.name)) return true
+        // Ceremony worlds are cloned separately and not registered as arenas.
+        if (world.name.startsWith("cw_ceremony_")) return true
+        return false
     }
 
     fun registerArenasToApi() {

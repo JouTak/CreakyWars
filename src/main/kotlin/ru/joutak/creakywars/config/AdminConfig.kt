@@ -33,6 +33,10 @@ object AdminConfig {
         CeremonyPodium(9, 64, 0, 10, 1, 180f),
     )
 
+    var ceremonySpectators: List<CeremonyPodium> = listOf(
+        CeremonyPodium(12, 64, 0, 15, 3, 180f),
+    )
+
     fun load() {
         val plugin = PluginManager.getPlugin()
         file = File(plugin.dataFolder, "admin-config.yml")
@@ -78,6 +82,13 @@ object AdminConfig {
             ),
         )
 
+        ensure(
+            "ceremony.spectators",
+            listOf(
+                listOf(12, 64, 0, 15, 3, 180),
+            ),
+        )
+
         if (changed) {
             try {
                 config.save(file)
@@ -101,8 +112,11 @@ object AdminConfig {
         ceremonyDurationSeconds = config.getInt("ceremony.duration-seconds", ceremonyDurationSeconds).coerceAtLeast(1)
         ceremonyWindCharges = config.getInt("ceremony.wind-charges", ceremonyWindCharges).coerceAtLeast(0)
 
-        val podiumsRaw = config.getList("ceremony.podiums") ?: emptyList<Any>()
+        val podiumsRaw: List<*> = config.getList("ceremony.podiums") ?: emptyList<Any>()
         val parsedPodiums = mutableListOf<CeremonyPodium>()
+
+        val spectatorsRaw: List<*> = config.getList("ceremony.spectators") ?: emptyList<Any>()
+        val parsedSpectators = mutableListOf<CeremonyPodium>()
 
         fun numToInt(v: Any?): Int? = when (v) {
             is Int -> v
@@ -122,20 +136,29 @@ object AdminConfig {
             else -> null
         }
 
-        for (entry in podiumsRaw) {
-            val list = entry as? List<*> ?: continue
-            if (list.size < 5) continue
-            val minX = numToInt(list.getOrNull(0)) ?: continue
-            val y = numToInt(list.getOrNull(1)) ?: continue
-            val minZ = numToInt(list.getOrNull(2)) ?: continue
-            val maxX = numToInt(list.getOrNull(3)) ?: continue
-            val maxZ = numToInt(list.getOrNull(4)) ?: continue
-            val yaw = numToFloat(list.getOrNull(5)) ?: 180f
-            parsedPodiums.add(CeremonyPodium(minX, y, minZ, maxX, maxZ, yaw))
+        fun parsePodiums(raw: List<*>, out: MutableList<CeremonyPodium>) {
+            for (entry in raw) {
+                val list = entry as? List<*> ?: continue
+                if (list.size < 5) continue
+                val minX = numToInt(list.getOrNull(0)) ?: continue
+                val y = numToInt(list.getOrNull(1)) ?: continue
+                val minZ = numToInt(list.getOrNull(2)) ?: continue
+                val maxX = numToInt(list.getOrNull(3)) ?: continue
+                val maxZ = numToInt(list.getOrNull(4)) ?: continue
+                val yaw = numToFloat(list.getOrNull(5)) ?: 180f
+                out.add(CeremonyPodium(minX, y, minZ, maxX, maxZ, yaw))
+            }
         }
+
+        parsePodiums(podiumsRaw, parsedPodiums)
+        parsePodiums(spectatorsRaw, parsedSpectators)
 
         if (parsedPodiums.size >= 4) {
             ceremonyPodiums = parsedPodiums.take(4)
+        }
+
+        if (parsedSpectators.isNotEmpty()) {
+            ceremonySpectators = parsedSpectators
         }
 
         PluginManager.getLogger().info("Административный конфиг загружен!")

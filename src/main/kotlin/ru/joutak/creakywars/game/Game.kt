@@ -9,13 +9,17 @@ import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
 import org.bukkit.block.data.Directional
 import org.bukkit.entity.Player
+import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import org.bukkit.event.HandlerList
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.arenas.Arena
+import ru.joutak.creakywars.arenas.ArenaManager
 import ru.joutak.creakywars.arenas.ArenaState
+import ru.joutak.creakywars.ceremony.CeremonyController
+import ru.joutak.creakywars.ceremony.CeremonyPodium
 import ru.joutak.creakywars.config.AdminConfig
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.config.ScenarioConfig
@@ -66,6 +70,11 @@ class Game(
 
     private val spectators = mutableSetOf<UUID>()
     private val spectatorBackups = mutableMapOf<UUID, SpectatorBackup>()
+
+    private val spectatorEnsureGamemodeTasks = mutableMapOf<UUID, BukkitTask>()
+
+    private var ceremonyWorldName: String? = null
+    private var teamPlacementsAtEnd: Map<Int, Int>? = null
 
 
     // Results recording (MiniGamesAPI shared DB)
@@ -323,6 +332,14 @@ class Game(
 
         spectators.add(uuid)
 
+        // If the player was previously bound to a ceremony region, ensure it doesn't leak into admin spectate.
+        try {
+            CeremonyController.clearPlayer(player)
+        } catch (_: Exception) {
+        }
+
+        spectatorEnsureGamemodeTasks.remove(uuid)?.cancel()
+
         // Safe spectator state
         try {
             player.inventory.clear()
@@ -336,20 +353,34 @@ class Game(
         }
 
         try {
-            player.teleport(getSpectatorViewLocation())
+            player.teleport(getSpectatorViewLocation(), PlayerTeleportEvent.TeleportCause.PLUGIN)
         } catch (_: Exception) {
         }
 
         // Some servers/plugins may override gamemode on teleport/world change.
-        // We set spectator once more on the next tick (but never override CREATIVE).
-        Bukkit.getScheduler().runTask(PluginManager.getPlugin(), Runnable {
-            if (GameManager.getSpectatingGame(player) == this && player.gameMode != GameMode.CREATIVE) {
-                try {
-                    player.gameMode = GameMode.SPECTATOR
-                } catch (_: Exception) {
-                }
+        // Keep enforcing spectator mode for a short time.
+        var ticks = 0
+        val task = Bukkit.getScheduler().runTaskTimer(PluginManager.getPlugin(), Runnable {
+            val p = Bukkit.getPlayer(uuid)
+            if (p == null || !p.isOnline || !spectators.contains(uuid) || GameManager.getSpectatingGame(p) != this) {
+                spectatorEnsureGamemodeTasks.remove(uuid)?.cancel()
+                return@Runnable
             }
-        })
+
+            try {
+                if (p.gameMode != GameMode.SPECTATOR) p.gameMode = GameMode.SPECTATOR
+                p.isCollidable = false
+            } catch (_: Exception) {
+            }
+
+            ticks++
+            // Some Multiverse/world plugins can keep overriding GM for a moment after teleport.
+            // Enforce for a bit longer to be safe.
+            if (ticks >= 120) {
+                spectatorEnsureGamemodeTasks.remove(uuid)?.cancel()
+            }
+        }, 1L, 1L)
+        spectatorEnsureGamemodeTasks[uuid] = task
 
         teamScoreboard.addPlayer(player)
         teamScoreboard.update()
@@ -365,6 +396,14 @@ class Game(
     fun removeSpectator(player: Player, silent: Boolean = false, forceLobby: Boolean = true) {
         val uuid = player.uniqueId
         if (!spectators.contains(uuid)) return
+
+        spectatorEnsureGamemodeTasks.remove(uuid)?.cancel()
+
+        // Drop any ceremony bounds if they were ever applied.
+        try {
+            CeremonyController.clearPlayer(player)
+        } catch (_: Exception) {
+        }
 
         spectators.remove(uuid)
 
@@ -384,7 +423,7 @@ class Game(
             // Fallback reset
             val mainWorld = Bukkit.getWorlds().firstOrNull()
             if (mainWorld != null) {
-                player.teleport(mainWorld.spawnLocation)
+                player.teleport(mainWorld.spawnLocation, PlayerTeleportEvent.TeleportCause.PLUGIN)
             }
             player.gameMode = GameMode.ADVENTURE
             player.inventory.clear()
@@ -1030,14 +1069,123 @@ class Game(
             sendResults(null)
         }
 
+        val ceremonyStarted = tryStartFinalCeremony()
+        val cleanupDelayTicks = if (ceremonyStarted) {
+            (AdminConfig.ceremonyDurationSeconds.coerceAtLeast(1) * 20L)
+        } else {
+            200L
+        }
+
         // Ensure the game always proceeds to full cleanup and removal from GameManager.
         cleanupTask = Bukkit.getScheduler().runTaskLater(PluginManager.getPlugin(), Runnable {
             cleanup()
-        }, 200L)
+        }, cleanupDelayTicks)
     }
 
     fun disableListeners() {
         HandlerList.unregisterAll(teamChestListener)
+    }
+
+    private fun tryStartFinalCeremony(): Boolean {
+        if (!AdminConfig.ceremonyEnabled) return false
+        val placements = teamPlacementsAtEnd ?: return false
+
+        val templateName = AdminConfig.ceremonyTemplateWorldName
+        if (templateName.isBlank()) return false
+
+        val cloneName = "cw_ceremony_${arena.id}_${System.currentTimeMillis() % 1000000L}"
+        val world = try {
+            ArenaManager.cloneWorld(templateName, cloneName)
+        } catch (e: Exception) {
+            PluginManager.getLogger().warning("Ceremony clone failed: ${e.message}")
+            null
+        } ?: return false
+
+        ceremonyWorldName = world.name
+
+        try {
+            world.pvp = false
+            world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, false)
+            world.setGameRule(org.bukkit.GameRule.DO_WEATHER_CYCLE, false)
+            world.setGameRule(org.bukkit.GameRule.DO_DAYLIGHT_CYCLE, false)
+            world.setGameRule(org.bukkit.GameRule.ANNOUNCE_ADVANCEMENTS, false)
+        } catch (_: Exception) {
+        }
+
+        val podiums = AdminConfig.ceremonyPodiums
+        val spectatorAreas = AdminConfig.ceremonySpectators
+
+        var spectatorSlot = 0
+        val teamSlots = mutableMapOf<Int, Int>()
+
+        // Place participants by their team placement.
+        for (player in players) {
+            val data = getPlayerData(player)
+            val teamId = data?.team?.id
+            val place = if (teamId != null) placements[teamId] else null
+            val podium = if (place != null) podiums.getOrNull((place - 1).coerceAtLeast(0)) else null
+
+            if (podium == null) {
+                // If something is odd (no team), treat as spectator.
+                val area = spectatorAreas.getOrNull(spectatorSlot % spectatorAreas.size) ?: continue
+                teleportToCeremonySpot(player, world, area, spectatorSlot, isSpectator = true)
+                spectatorSlot++
+                continue
+            }
+
+            val slot = if (teamId != null) {
+                val current = teamSlots[teamId] ?: 0
+                teamSlots[teamId] = current + 1
+                current
+            } else {
+                0
+            }
+            teleportToCeremonySpot(player, world, podium, slot = slot, isSpectator = false)
+        }
+
+        // Place spectators in their own configured areas.
+        for (spectator in spectatorsOnline) {
+            val area = spectatorAreas.getOrNull(spectatorSlot % spectatorAreas.size) ?: continue
+            teleportToCeremonySpot(spectator, world, area, spectatorSlot, isSpectator = true)
+            spectatorSlot++
+        }
+
+        broadcastMessage("§6Церемония награждения началась!")
+        return true
+    }
+
+    private fun teleportToCeremonySpot(player: Player, world: org.bukkit.World, podium: CeremonyPodium, slot: Int, isSpectator: Boolean) {
+        try {
+            if (isSpectator) {
+                player.gameMode = GameMode.SPECTATOR
+                player.isCollidable = false
+            } else {
+                player.gameMode = GameMode.ADVENTURE
+                player.isCollidable = true
+                player.activePotionEffects.forEach { player.removePotionEffect(it.type) }
+                player.health = player.maxHealth
+                player.foodLevel = 20
+                player.saturation = 20f
+                player.fireTicks = 0
+
+                val charges = AdminConfig.ceremonyWindCharges
+                if (charges > 0) {
+                    player.inventory.addItem(ItemStack(Material.WIND_CHARGE, charges))
+                }
+            }
+        } catch (_: Exception) {
+        }
+
+        val spawn = podium.getSpawnLocation(world, slot)
+        try {
+            player.teleport(spawn, PlayerTeleportEvent.TeleportCause.PLUGIN)
+        } catch (_: Exception) {
+        }
+
+        try {
+            CeremonyController.setPlayerRegion(player, world.name, podium.toBounds())
+        } catch (_: Exception) {
+        }
     }
 
     private fun displayStats() {
@@ -1174,6 +1322,8 @@ class Game(
             teamKills = teamKills,
         )
 
+        teamPlacementsAtEnd = placements
+
         val teamResults = (0..3).map { teamId ->
             val team = teams.firstOrNull { it.id == teamId }
 
@@ -1283,6 +1433,17 @@ class Game(
         val playersSnapshot = players.toList()
         val spectatorsSnapshot = spectatorsOnline.toList()
 
+        val ceremonyWorldSnapshot = ceremonyWorldName
+
+        if (ceremonyWorldSnapshot != null) {
+            (playersSnapshot + spectatorsSnapshot).forEach { p ->
+                try {
+                    CeremonyController.clearPlayer(p)
+                } catch (_: Exception) {
+                }
+            }
+        }
+
         // Always attempt to remove the game from GameManager even if some cleanup step fails.
         try {
             // Restore / eject spectators first (their backups may depend on current world state).
@@ -1304,7 +1465,7 @@ class Game(
 
                 try {
                     if (lobbySpawn != null) {
-                        player.teleport(lobbySpawn)
+                        player.teleport(lobbySpawn, PlayerTeleportEvent.TeleportCause.PLUGIN)
                     }
                 } catch (_: Exception) {
                 }
@@ -1344,6 +1505,18 @@ class Game(
             try {
                 disableListeners()
             } catch (_: Exception) {
+            }
+
+            if (ceremonyWorldSnapshot != null) {
+                try {
+                    CeremonyController.clearWorld(ceremonyWorldSnapshot)
+                } catch (_: Exception) {
+                }
+                try {
+                    ArenaManager.deleteWorldByName(ceremonyWorldSnapshot)
+                } catch (_: Exception) {
+                }
+                ceremonyWorldName = null
             }
 
             pendingLastChanceRespawn.clear()
@@ -1579,7 +1752,7 @@ class Game(
 
             if (target != null) {
                 try {
-                    player.teleport(target)
+                    player.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN)
                 } catch (_: Exception) {
                 }
             }

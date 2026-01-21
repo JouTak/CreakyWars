@@ -248,13 +248,53 @@ class PlayerListener : Listener {
         event.respawnLocation = player.location
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onAdminSpectateGamemodeChange(event: PlayerGameModeChangeEvent) {
+        val player = event.player
+        val spectateGame = GameManager.getSpectatingGame(player) ?: return
+        if (!spectateGame.isSpectator(player.uniqueId)) return
+
+        // Some world-management plugins (e.g. Multiverse) may force a world-specific gamemode.
+        // Admin spectators must remain in SPECTATOR.
+        if (event.newGameMode != GameMode.SPECTATOR) {
+            event.isCancelled = true
+            Bukkit.getScheduler().runTask(PluginManager.getPlugin(), Runnable {
+                val p = Bukkit.getPlayer(player.uniqueId) ?: return@Runnable
+                val g = GameManager.getSpectatingGame(p) ?: return@Runnable
+                if (g.isSpectator(p.uniqueId) && p.gameMode != GameMode.SPECTATOR) {
+                    p.gameMode = GameMode.SPECTATOR
+                }
+                try {
+                    p.isCollidable = false
+                } catch (_: Exception) {
+                }
+            })
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    fun onAdminSpectateWorldChanged(event: PlayerChangedWorldEvent) {
+        val player = event.player
+        val spectateGame = GameManager.getSpectatingGame(player) ?: return
+        if (!spectateGame.isSpectator(player.uniqueId)) return
+
+        // Re-apply spectator after world change to override any world-enforced GM.
+        Bukkit.getScheduler().runTask(PluginManager.getPlugin(), Runnable {
+            val p = Bukkit.getPlayer(player.uniqueId) ?: return@Runnable
+            val g = GameManager.getSpectatingGame(p) ?: return@Runnable
+            if (!g.isSpectator(p.uniqueId)) return@Runnable
+            try {
+                if (p.gameMode != GameMode.SPECTATOR) p.gameMode = GameMode.SPECTATOR
+                p.isCollidable = false
+            } catch (_: Exception) {
+            }
+        })
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onSpectatorCrossWorldTeleport(event: PlayerTeleportEvent) {
         val player = event.player
         if (player.gameMode != GameMode.SPECTATOR) return
-
-        // Admin/referees may want to teleport around freely.
-        if (player.hasPermission("creakywars.admin")) return
 
         val game = GameManager.getGame(player) ?: GameManager.getSpectatingGame(player) ?: return
 
