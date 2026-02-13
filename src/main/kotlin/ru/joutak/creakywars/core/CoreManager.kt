@@ -3,7 +3,6 @@ package ru.joutak.creakywars.core
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.block.Block
-import org.bukkit.block.data.type.CreakingHeart
 import org.bukkit.entity.ArmorStand
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler

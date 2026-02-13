@@ -1,20 +1,20 @@
 package ru.joutak.creakywars.listeners
 
+import org.bukkit.Bukkit
 import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.entity.Player
-import org.bukkit.event.block.Action
-import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
+import org.bukkit.event.block.Action
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.inventory.ClickType
-import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryAction
+import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.*
-import org.bukkit.Bukkit
+import org.bukkit.inventory.EquipmentSlot
 import ru.joutak.creakywars.ceremony.CeremonyController
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.game.PlayerLoadout
@@ -39,12 +39,12 @@ class PlayerListener : Listener {
         val name = t.name
         val isToolOrWeapon =
             name.endsWith("_SWORD") ||
-            name.endsWith("_PICKAXE") ||
-            name.endsWith("_AXE") ||
-            name.endsWith("_SHOVEL") ||
-            name.endsWith("_HOE") ||
-            t == Material.BOW ||
-            t == Material.CROSSBOW
+                    name.endsWith("_PICKAXE") ||
+                    name.endsWith("_AXE") ||
+                    name.endsWith("_SHOVEL") ||
+                    name.endsWith("_HOE") ||
+                    t == Material.BOW ||
+                    t == Material.CROSSBOW
 
         if (!isToolOrWeapon) return false
         val meta = item.itemMeta ?: return false
@@ -155,7 +155,6 @@ class PlayerListener : Listener {
         }
     }
 
-    
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     fun onSuppressItemUseWhileTraderClick(event: PlayerInteractEvent) {
@@ -229,7 +228,7 @@ class PlayerListener : Listener {
         player.updateInventory()
     }
 
-        @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     fun onInventoryClickPreventStoringBoundItems(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
         val game = GameManager.getGame(player) ?: return
@@ -286,7 +285,7 @@ class PlayerListener : Listener {
         }
     }
 
-@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onInventoryClickEnsureSword(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
         val game = GameManager.getGame(player) ?: return
@@ -295,7 +294,8 @@ class PlayerListener : Listener {
 
         val cursorSword = isSwordItem(event.cursor)
         val currentSword = isSwordItem(event.currentItem)
-        val hotbarSword = if (event.hotbarButton >= 0) isSwordItem(player.inventory.getItem(event.hotbarButton)) else false
+        val hotbarSword =
+            if (event.hotbarButton >= 0) isSwordItem(player.inventory.getItem(event.hotbarButton)) else false
         if (!cursorSword && !currentSword && !hotbarSword) return
 
         scheduleEnsureWoodenSword(player)

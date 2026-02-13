@@ -163,12 +163,12 @@ object AdminConfig {
 
         PluginManager.getLogger().info("Административный конфиг загружен!")
         if (debugMode) {
-            PluginManager.getLogger().info("§e[DEBUG] Режим отладки включен! Игры будут запускаться с минимальным количеством игроков.")
+            PluginManager.getLogger()
+                .info("§e[DEBUG] Режим отладки включен! Игры будут запускаться с минимальным количеством игроков.")
         }
     }
 
     fun reload() {
-        config = YamlConfiguration.loadConfiguration(file)
         load()
         ArenaManager.loadTemplate()
     }

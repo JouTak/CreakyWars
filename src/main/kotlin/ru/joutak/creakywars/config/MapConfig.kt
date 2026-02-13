@@ -66,7 +66,8 @@ data class MapConfig(
                         try {
                             SpawnLocation.fromString(locStr, "${resourceType}_$index")
                         } catch (e: Exception) {
-                            PluginManager.getLogger().warning("⚠ Ошибка парсинга локации генератора $resourceType[$index]: $locStr")
+                            PluginManager.getLogger()
+                                .warning("⚠ Ошибка парсинга локации генератора $resourceType[$index]: $locStr")
                             throw e
                         }
                     }

@@ -109,7 +109,6 @@ object ScenarioConfig {
     }
 
     fun reload() {
-        config = YamlConfiguration.loadConfiguration(file)
         load()
     }
 }

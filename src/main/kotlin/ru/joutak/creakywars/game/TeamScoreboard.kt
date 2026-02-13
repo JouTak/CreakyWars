@@ -6,8 +6,8 @@ import org.bukkit.entity.Player
 import org.bukkit.scoreboard.DisplaySlot
 import org.bukkit.scoreboard.Objective
 import org.bukkit.scoreboard.Scoreboard
+import java.util.*
 import org.bukkit.scoreboard.Team as BukkitTeam
-import java.util.UUID
 
 class TeamScoreboard(private val game: Game) {
 

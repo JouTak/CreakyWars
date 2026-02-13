@@ -16,17 +16,16 @@ import org.bukkit.event.inventory.InventoryCloseEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.inventory.Inventory
-import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.Game
-import ru.joutak.creakywars.game.Team
 import ru.joutak.creakywars.game.PlayerLoadout
+import ru.joutak.creakywars.game.Team
 import ru.joutak.creakywars.trading.Trade
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
-import java.util.UUID
+import java.util.*
 import java.util.logging.Level
 
 object ShopGui : Listener {
@@ -125,6 +124,7 @@ object ShopGui : Listener {
                         // but also avoid cluttering the shop for players who already have elytra equipped.
                         showTrade = player.inventory.chestplate?.type != Material.ELYTRA
                     }
+
                     isArmor(tradeResultType) -> {
                         val armorType = getArmorType(tradeResultType)
                         val currentItem = loadout.getStoredArmor(armorType)
@@ -306,8 +306,19 @@ object ShopGui : Listener {
 
             if (loadout != null) {
                 val currentTier = when {
-                    isArmorTrade -> loadout.getStoredArmor(getArmorType(tradeResultType))?.type?.let { getArmorMaterialTier(it) } ?: 0
-                    isToolTrade -> player.inventory.contents.filterNotNull().firstOrNull { getToolType(it.type) == getToolType(tradeResultType) }?.type?.let { getToolMaterialTier(it) } ?: 0
+                    isArmorTrade -> loadout.getStoredArmor(getArmorType(tradeResultType))?.type?.let {
+                        getArmorMaterialTier(
+                            it
+                        )
+                    } ?: 0
+
+                    isToolTrade -> player.inventory.contents.filterNotNull()
+                        .firstOrNull { getToolType(it.type) == getToolType(tradeResultType) }?.type?.let {
+                        getToolMaterialTier(
+                            it
+                        )
+                    } ?: 0
+
                     isSwordTrade -> getCurrentSwordTier(player)
                     else -> 0
                 }
@@ -337,7 +348,10 @@ object ShopGui : Listener {
             if (!removed) {
                 MessageUtils.sendMessage(player, "§cОшибка при списании ресурсов!")
                 player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 1f, 1f)
-                PluginManager.getPlugin().logger.log(Level.WARNING, "[ShopGui] Не удалось удалить ${requiredAmount}x ${resourceType.material} у ${player.name}")
+                PluginManager.getPlugin().logger.log(
+                    Level.WARNING,
+                    "[ShopGui] Не удалось удалить ${requiredAmount}x ${resourceType.material} у ${player.name}"
+                )
                 return
             }
 
@@ -345,6 +359,7 @@ object ShopGui : Listener {
                 tradeResultType == Material.ELYTRA && loadout != null -> {
                     loadout.equipElytra(resultItem, silent = false)
                 }
+
                 isArmorTrade && loadout != null -> {
                     val armorType = getArmorType(resultItem.type)
 
@@ -355,12 +370,15 @@ object ShopGui : Listener {
                         loadout.upgradeArmor("boots", bootsItem, silent = true)
                     }
                 }
+
                 isSwordTrade && loadout != null -> {
                     loadout.upgradeSword(resultItem)
                 }
+
                 isToolTrade && loadout != null -> {
                     loadout.addOrReplaceTool(resultItem)
                 }
+
                 tradeResultType == Material.ELYTRA -> {
                     // Fallback for cases where loadout is not available (shouldn't normally happen in a game).
                     val oldChest = player.inventory.chestplate
@@ -372,6 +390,7 @@ object ShopGui : Listener {
                         }
                     }
                 }
+
                 else -> {
                     val leftover = player.inventory.addItem(resultItem)
                     if (leftover.isNotEmpty()) {
@@ -383,7 +402,10 @@ object ShopGui : Listener {
                 }
             }
 
-            MessageUtils.sendMessage(player, "§aВы купили §e${trade.displayName}§a за ${requiredAmount}x ${resourceType.displayName}!")
+            MessageUtils.sendMessage(
+                player,
+                "§aВы купили §e${trade.displayName}§a за ${requiredAmount}x ${resourceType.displayName}!"
+            )
             player.playSound(player.location, Sound.ENTITY_VILLAGER_YES, 1f, 1f)
 
             playerData?.resourcesCollected = (playerData?.resourcesCollected ?: 0) + requiredAmount
@@ -618,9 +640,6 @@ object ShopGui : Listener {
         material == Material.SHEARS -> 8
         else -> 0
     }
-
-    private fun isBlock(material: Material): Boolean =
-        material.isBlock && !isArmor(material) && !isSword(material)
 
     private fun shouldUseTeamColor(material: Material): Boolean =
         material.name.contains("_WOOL") ||

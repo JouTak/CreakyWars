@@ -3,13 +3,13 @@ package ru.joutak.creakywars.game
 import org.bukkit.Color
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
-import org.bukkit.inventory.EquipmentSlot
-import org.bukkit.persistence.PersistentDataType
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.entity.Player
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.LeatherArmorMeta
+import org.bukkit.persistence.PersistentDataType
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
 
@@ -234,16 +234,19 @@ data class PlayerLoadout(
                 player.inventory.leggings = upgradedItem
                 permanentArmorUpgrades.add("leggings_${item.type.name}")
             }
+
             "boots" -> {
                 boots = upgradedItem.clone()
                 player.inventory.boots = upgradedItem
                 permanentArmorUpgrades.add("boots_${item.type.name}")
             }
+
             "helmet" -> {
                 helmet = upgradedItem.clone()
                 player.inventory.helmet = upgradedItem
                 permanentArmorUpgrades.add("helmet_${item.type.name}")
             }
+
             "chestplate" -> {
                 chestplate = upgradedItem.clone()
                 player.inventory.chestplate = upgradedItem
@@ -274,8 +277,6 @@ data class PlayerLoadout(
             MessageUtils.sendMessage(player, "§aЭлитры экипированы!")
         }
     }
-
-
 
 
     fun equipElytraFromHand(hand: EquipmentSlot, silent: Boolean = false) {

@@ -61,7 +61,10 @@ class ExplosivesListener : Listener {
 
         event.block.world.spawn(tntLocation, TNTPrimed::class.java).apply {
             fuseTicks = 40
-            setMetadata("EXPLOSION_CREATOR_UUID", FixedMetadataValue(PluginManager.getPlugin(), player.uniqueId.toString()))
+            setMetadata(
+                "EXPLOSION_CREATOR_UUID",
+                FixedMetadataValue(PluginManager.getPlugin(), player.uniqueId.toString())
+            )
             velocity = player.location.direction.multiply(0.2)
         }
 
@@ -87,7 +90,8 @@ class ExplosivesListener : Listener {
         val hand = event.hand ?: return
         if (hand != EquipmentSlot.HAND && hand != EquipmentSlot.OFF_HAND) return
 
-        val invItem = if (hand == EquipmentSlot.OFF_HAND) player.inventory.itemInOffHand else player.inventory.itemInMainHand
+        val invItem =
+            if (hand == EquipmentSlot.OFF_HAND) player.inventory.itemInOffHand else player.inventory.itemInMainHand
         if (invItem.type != Material.FIRE_CHARGE) return
 
         event.isCancelled = true
@@ -106,7 +110,10 @@ class ExplosivesListener : Listener {
             shooter = player
             // Keep a normal explosion radius; we still filter/break only allowed blocks in our custom handler.
             yield = 2.0f
-            setMetadata("EXPLOSION_CREATOR_UUID", FixedMetadataValue(PluginManager.getPlugin(), player.uniqueId.toString()))
+            setMetadata(
+                "EXPLOSION_CREATOR_UUID",
+                FixedMetadataValue(PluginManager.getPlugin(), player.uniqueId.toString())
+            )
             setMetadata("FIREBALL_START_LOC", FixedMetadataValue(PluginManager.getPlugin(), location))
         }
 
@@ -282,8 +289,9 @@ class ExplosivesListener : Listener {
     private fun getBlastResistance(type: Material): Float {
         // Prefer API value if available (Paper/Bukkit provide it on modern versions).
         val viaApi = runCatching {
-            val method = type.javaClass.methods.firstOrNull { it.name == "getBlastResistance" && it.parameterCount == 0 }
-                ?: return@runCatching null
+            val method =
+                type.javaClass.methods.firstOrNull { it.name == "getBlastResistance" && it.parameterCount == 0 }
+                    ?: return@runCatching null
             val value = method.invoke(type)
             when (value) {
                 is Float -> value

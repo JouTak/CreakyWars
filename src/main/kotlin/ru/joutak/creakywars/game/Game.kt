@@ -1,19 +1,15 @@
 package ru.joutak.creakywars.game
 
-import org.bukkit.Bukkit
-import org.bukkit.GameMode
-import org.bukkit.Location
-import org.bukkit.Material
-import org.bukkit.Sound
+import org.bukkit.*
 import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
 import org.bukkit.block.data.Directional
 import org.bukkit.entity.Player
+import org.bukkit.event.HandlerList
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
-import org.bukkit.event.HandlerList
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.arenas.Arena
 import ru.joutak.creakywars.arenas.ArenaManager
@@ -30,15 +26,15 @@ import ru.joutak.creakywars.trading.TraderManager
 import ru.joutak.creakywars.upgrades.BrainStationManager
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
-import ru.joutak.minigames.managers.MatchmakingManager
-import ru.joutak.minigames.ui.LobbyScoreboardManager
-import ru.joutak.minigames.ui.QueueBossBarManager
 import ru.joutak.minigames.MiniGamesAPI
+import ru.joutak.minigames.managers.MatchmakingManager
 import ru.joutak.minigames.results.model.MatchResult
+import ru.joutak.minigames.results.model.Metric
 import ru.joutak.minigames.results.model.PlayerResult
 import ru.joutak.minigames.results.model.TeamResult
-import ru.joutak.minigames.results.model.Metric
-import java.util.UUID
+import ru.joutak.minigames.ui.LobbyScoreboardManager
+import ru.joutak.minigames.ui.QueueBossBarManager
+import java.util.*
 
 @Suppress("DEPRECATION")
 class Game(
@@ -140,7 +136,9 @@ class Game(
     fun isSpectator(uuid: UUID): Boolean = spectators.contains(uuid)
 
     fun isAwaitingRespawn(uuid: UUID): Boolean {
-        return respawnTimers.containsKey(uuid) || pendingLastChanceRespawn.contains(uuid) || awaitingRespawnSetup.contains(uuid)
+        return respawnTimers.containsKey(uuid) || pendingLastChanceRespawn.contains(uuid) || awaitingRespawnSetup.contains(
+            uuid
+        )
     }
 
     fun hasPendingLastChanceRespawn(uuid: UUID): Boolean {
@@ -462,7 +460,7 @@ class Game(
             }
 
             countdown--
-        }, 0L, 1L)
+        }, 0L, 20L)
     }
 
     fun startFromMatchmaking() {
@@ -560,7 +558,8 @@ class Game(
 
     private fun setupTeamChests() {
         if (teams.size != arena.mapConfig.teamChestLocations.size) {
-            PluginManager.getLogger().warning("Количество команд (${teams.size}) не совпадает с количеством командных сундуков (${arena.mapConfig.teamChestLocations.size}) в конфиге!")
+            PluginManager.getLogger()
+                .warning("Количество команд (${teams.size}) не совпадает с количеством командных сундуков (${arena.mapConfig.teamChestLocations.size}) в конфиге!")
             return
         }
 
@@ -581,7 +580,6 @@ class Game(
             applyFacing(block, loc.yaw)
         }
     }
-
 
 
     private fun applyFacing(block: Block, yaw: Float) {
@@ -764,8 +762,8 @@ class Game(
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
                 }
 
-				teamScoreboard.update()
-				checkWinCondition()
+                teamScoreboard.update()
+                checkWinCondition()
                 return@Runnable
             }
 
@@ -783,8 +781,8 @@ class Game(
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
                 }
 
-				teamScoreboard.update()
-				checkWinCondition()
+                teamScoreboard.update()
+                checkWinCondition()
             }
         }, 1L)
     }
@@ -834,7 +832,7 @@ class Game(
                     "§e$sum§7x $displayName"
                 }
 
-            val itemsList = messageParts.joinToString(", ")
+            // TODO: itemsList was computed but never used — message was likely intended here
         }
     }
 
@@ -968,10 +966,12 @@ class Game(
                 PluginManager.getLogger().info("Игра #${arena.id}: побеждает команда ${aliveTeams.first().name}")
                 endGame(aliveTeams.first())
             }
+
             aliveTeams.isEmpty() -> {
                 PluginManager.getLogger().info("Игра #${arena.id}: ничья, все команды выбыли")
                 endGame(null)
             }
+
             phasesFinished && aliveTeams.size > 1 -> {
                 PluginManager.getLogger().info("Игра #${arena.id}: ничья по истечении фаз")
                 endGame(null)
@@ -1047,6 +1047,7 @@ class Game(
                     data?.team?.id == winnerTeam.id -> MessageUtils.sendTitle(player, "§6Победа!", "§e$winnerName")
                     spectators.contains(player.uniqueId) || data?.team == null ->
                         MessageUtils.sendTitle(player, "§eИгра окончена", "§7Победитель: §e$winnerName")
+
                     else -> MessageUtils.sendTitle(player, "§cПоражение!", "§7Победитель: §e$winnerName")
                 }
             }
@@ -1128,7 +1129,8 @@ class Game(
 
             if (podium == null) {
                 // If something is odd (no team), treat as spectator.
-                val area = if (spectatorAreas.isNotEmpty()) spectatorAreas[spectatorSlot % spectatorAreas.size] else null
+                val area =
+                    if (spectatorAreas.isNotEmpty()) spectatorAreas[spectatorSlot % spectatorAreas.size] else null
                 if (area == null) {
                     // No configured spectator areas; skip placing this player
                     continue
@@ -1160,7 +1162,13 @@ class Game(
         return true
     }
 
-    private fun teleportToCeremonySpot(player: Player, world: org.bukkit.World, podium: CeremonyPodium, slot: Int, isSpectator: Boolean) {
+    private fun teleportToCeremonySpot(
+        player: Player,
+        world: org.bukkit.World,
+        podium: CeremonyPodium,
+        slot: Int,
+        isSpectator: Boolean
+    ) {
         try {
             if (isSpectator) {
                 player.gameMode = GameMode.SPECTATOR
@@ -1274,6 +1282,7 @@ class Game(
         }
         return placements
     }
+
     private fun prepareResults(winnerTeam: Team?) {
         if (pendingMatchResult != null) return
 

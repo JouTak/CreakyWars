@@ -3,8 +3,8 @@ package ru.joutak.creakywars.listeners
 import org.bukkit.Bukkit
 import org.bukkit.entity.Illusioner
 import org.bukkit.event.EventHandler
-import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.Listener
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
 import ru.joutak.creakywars.game.GameManager

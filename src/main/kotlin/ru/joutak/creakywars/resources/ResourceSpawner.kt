@@ -10,7 +10,7 @@ import ru.joutak.creakywars.game.Game
 import ru.joutak.creakywars.game.Team
 import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.creakywars.utils.SpawnLocation
-import java.util.Locale
+import java.util.*
 
 object ResourceSpawner {
     private val activeSpawners = mutableMapOf<Game, MutableList<Spawner>>()

@@ -2,11 +2,7 @@ package ru.joutak.creakywars.commands
 
 import org.bukkit.Bukkit
 import org.bukkit.World
-import org.bukkit.command.Command
-import org.bukkit.command.CommandExecutor
-import org.bukkit.command.CommandSender
-import org.bukkit.command.ConsoleCommandSender
-import org.bukkit.command.TabCompleter
+import org.bukkit.command.*
 import org.bukkit.entity.Player
 import ru.joutak.creakywars.arenas.ArenaManager
 import ru.joutak.creakywars.arenas.ArenaState
@@ -284,6 +280,7 @@ class CreakyCommands : CommandExecutor, TabCompleter {
                         val deleted = ArenaManager.cleanupOrphans(activeWorlds)
                         sender.sendMessage("§aОк. Удалено сиротских арен: §e$deleted§a.")
                     }
+
                     else -> sender.sendMessage("§cНеизвестно. Доступно: cleanup")
                 }
             }
@@ -296,15 +293,24 @@ class CreakyCommands : CommandExecutor, TabCompleter {
 
                 if (args.size < 2) {
                     sender.sendMessage("§cИспользование: /creakywars give <resourceId> [amount] [player]")
-                    sender.sendMessage("§7Доступные ресурсы: §f${GameConfig.resourceTypes.keys.sorted().joinToString(", ")}")
+                    sender.sendMessage(
+                        "§7Доступные ресурсы: §f${
+                            GameConfig.resourceTypes.keys.sorted().joinToString(", ")
+                        }"
+                    )
                     return true
                 }
 
                 val idToken = args[1]
-                val resource = GameConfig.resourceTypes.entries.firstOrNull { it.key.equals(idToken, ignoreCase = true) }?.value
+                val resource =
+                    GameConfig.resourceTypes.entries.firstOrNull { it.key.equals(idToken, ignoreCase = true) }?.value
                 if (resource == null) {
                     sender.sendMessage("§cНеизвестный ресурс: §f$idToken")
-                    sender.sendMessage("§7Доступные ресурсы: §f${GameConfig.resourceTypes.keys.sorted().joinToString(", ")}")
+                    sender.sendMessage(
+                        "§7Доступные ресурсы: §f${
+                            GameConfig.resourceTypes.keys.sorted().joinToString(", ")
+                        }"
+                    )
                     return true
                 }
 
@@ -378,15 +384,19 @@ class CreakyCommands : CommandExecutor, TabCompleter {
                     .sorted()
                     .filter { it.startsWith(args[1], ignoreCase = true) }
                     .toMutableList()
+
                 "spectate", "spec", "status", "games", "end", "startnow", "forcestart", "broadcast" -> {
                     buildGameTargets().filter { it.startsWith(args[1], ignoreCase = true) }.toMutableList()
                 }
+
                 "phase" -> listOf("info", "skip", "set")
                     .filter { it.startsWith(args[1], ignoreCase = true) }
                     .toMutableList()
+
                 "arena" -> listOf("cleanup")
                     .filter { it.startsWith(args[1], ignoreCase = true) }
                     .toMutableList()
+
                 else -> mutableListOf()
             }
         }
@@ -511,8 +521,10 @@ class CreakyCommands : CommandExecutor, TabCompleter {
                 team.coreDestroyed -> "§e⚠"
                 else -> "§a✓"
             }
-            sender.sendMessage(" ${status} ${team.color}${team.name}§7: §f${online.joinToString(", ")}" +
-                    if (alive.size != online.size) " §7(живы: §f${alive.joinToString(", ")}§7)" else "")
+            sender.sendMessage(
+                " ${status} ${team.color}${team.name}§7: §f${online.joinToString(", ")}" +
+                        if (alive.size != online.size) " §7(живы: §f${alive.joinToString(", ")}§7)" else ""
+            )
         }
     }
 

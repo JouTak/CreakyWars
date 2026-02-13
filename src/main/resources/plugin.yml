@@ -3,15 +3,15 @@ version: ${VERSION}
 api-version: ${MINECRAFT_VERSION}
 main: ru.joutak.creakywars.CreakyWars
 description: 'creakywars'
-authors: ['Kostyamops', 'EnderDissa']
+authors: [ 'Kostyamops', 'EnderDissa' ]
 website: ${WEBSITE}
 
-depend: [Multiverse-Core]
+depend: [ Multiverse-Core ]
 
 commands:
   creakywars:
     description: "CreakyWars admin utilities"
-    aliases: [cw]
+    aliases: [ cw ]
     usage: "/creakywars help"
 
 permissions:

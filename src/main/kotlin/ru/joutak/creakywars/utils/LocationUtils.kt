@@ -1,6 +1,5 @@
 package ru.joutak.creakywars.utils
 
-import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.World
 
@@ -15,7 +14,7 @@ data class SpawnLocation(
     fun toLocation(world: World): Location {
         return Location(world, x, y, z, yaw, pitch)
     }
-    
+
     companion object {
         fun fromString(str: String, name: String = "location"): SpawnLocation {
             val parts = str.split(",").map { it.trim() }
@@ -29,7 +28,7 @@ data class SpawnLocation(
             )
         }
     }
-    
+
     override fun toString(): String {
         return "$x, $y, $z, $yaw, $pitch"
     }

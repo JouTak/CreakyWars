@@ -16,7 +16,14 @@ object MessageUtils {
         players.forEach { it.sendMessage(fullMessage) }
     }
 
-    fun sendTitle(player: Player, title: String, subtitle: String = "", fadeIn: Int = 10, stay: Int = 70, fadeOut: Int = 20) {
+    fun sendTitle(
+        player: Player,
+        title: String,
+        subtitle: String = "",
+        fadeIn: Int = 10,
+        stay: Int = 70,
+        fadeOut: Int = 20
+    ) {
         player.sendTitle(title, subtitle, fadeIn, stay, fadeOut)
     }
 

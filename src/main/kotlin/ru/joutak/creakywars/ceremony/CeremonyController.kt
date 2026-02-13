@@ -7,7 +7,7 @@ import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import ru.joutak.creakywars.utils.PluginManager
-import java.util.UUID
+import java.util.*
 
 object CeremonyController : Listener {
     private data class PlayerRegion(val worldName: String, val bounds: Bounds)

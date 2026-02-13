@@ -8,7 +8,6 @@ import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
-import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.FoodLevelChangeEvent
 import org.bukkit.event.inventory.CraftItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
@@ -30,6 +29,7 @@ class GameListener : Listener {
             Material.FERN,
             Material.LARGE_FERN,
             Material.DEAD_BUSH -> true
+
             else -> false
         }
     }
@@ -192,7 +192,8 @@ class GameListener : Listener {
 
         if (game.arena.state == ArenaState.WAITING ||
             game.arena.state == ArenaState.STARTING ||
-            GameConfig.infiniteFood) {
+            GameConfig.infiniteFood
+        ) {
 
             event.isCancelled = true
             player.foodLevel = 20

@@ -10,11 +10,11 @@ import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitTask
 import ru.joutak.creakywars.config.GameConfig
+import ru.joutak.creakywars.listeners.CreakingListener
 import ru.joutak.creakywars.utils.PluginManager
 import ru.joutak.creakywars.utils.SpawnLocation
 import kotlin.math.cos
 import kotlin.math.sin
-import ru.joutak.creakywars.listeners.CreakingListener
 
 @Suppress("DEPRECATION", "SameParameterValue")
 class DayNightCycle(private val game: Game) {
@@ -257,7 +257,7 @@ class DayNightCycle(private val game: Game) {
         val nightDuration = GameConfig.nightDurationTicks
         val openCount = (eyeblossomBlocks.size * GameConfig.eyeblossomOpenPercent).toInt()
 
-        val maxOpenStartTime = nightDuration - EYEBLOSSOM_OPEN_DURATION
+        val maxOpenStartTime = (nightDuration - EYEBLOSSOM_OPEN_DURATION).coerceAtLeast(1)
 
         val shuffled = eyeblossomBlocks.keys.shuffled().take(openCount)
 
@@ -272,7 +272,8 @@ class DayNightCycle(private val game: Game) {
             state.isOpen = false
         }
 
-        PluginManager.getLogger().info("[Арена #${game.arena.id}] Запланировано открытие $openCount/${eyeblossomBlocks.size} цветков")
+        PluginManager.getLogger()
+            .info("[Арена #${game.arena.id}] Запланировано открытие $openCount/${eyeblossomBlocks.size} цветков")
     }
 
     private fun updateEyeblossoms() {
@@ -453,7 +454,13 @@ class DayNightCycle(private val game: Game) {
                 entity.setGravity(true)
 
                 entity.addPotionEffect(
-                    PotionEffect(PotionEffectType.SPEED, Int.MAX_VALUE, game.getCurrentCreakingSpeedAmplifier(), false, false)
+                    PotionEffect(
+                        PotionEffectType.SPEED,
+                        Int.MAX_VALUE,
+                        game.getCurrentCreakingSpeedAmplifier(),
+                        false,
+                        false
+                    )
                 )
                 entity.addPotionEffect(
                     PotionEffect(PotionEffectType.STRENGTH, Int.MAX_VALUE, 0, false, false)
@@ -462,7 +469,8 @@ class DayNightCycle(private val game: Game) {
                 // Якорь нужен для возврата скрипуна на точку возрождения (например, если его скинули с карты).
                 CreakingListener.setAnchor(entity, location)
 
-                PluginManager.getLogger().info("[Арена #${game.arena.id}] Скрипун заспавнен в ${spawnLoc.x}, ${spawnLoc.y}, ${spawnLoc.z}")
+                PluginManager.getLogger()
+                    .info("[Арена #${game.arena.id}] Скрипун заспавнен в ${spawnLoc.x}, ${spawnLoc.y}, ${spawnLoc.z}")
             }
         }
 

@@ -28,11 +28,11 @@ ceremony:
   # 4 podiums for places 1..4. Format: [minX, y, minZ, maxX, maxZ, yaw]
   # Each podium should be 2x2 blocks (4 blocks total) so players can stand together.
   podiums:
-    - [0, 64, 0, 1, 1, 180]
-    - [3, 64, 0, 4, 1, 180]
-    - [6, 64, 0, 7, 1, 180]
-    - [9, 64, 0, 10, 1, 180]
+    - [ 0, 64, 0, 1, 1, 180 ]
+    - [ 3, 64, 0, 4, 1, 180 ]
+    - [ 6, 64, 0, 7, 1, 180 ]
+    - [ 9, 64, 0, 10, 1, 180 ]
 
   # Where to place / keep spectators during ceremony. Format: [minX, y, minZ, maxX, maxZ, yaw]
   spectators:
-    - [12, 64, 0, 15, 3, 180]
+    - [ 12, 64, 0, 15, 3, 180 ]

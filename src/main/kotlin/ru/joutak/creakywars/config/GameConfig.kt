@@ -2,10 +2,10 @@
 
 package ru.joutak.creakywars.config
 
-import org.bukkit.configuration.file.FileConfiguration
-import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.Material
 import org.bukkit.configuration.ConfigurationSection
+import org.bukkit.configuration.file.FileConfiguration
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.inventory.ItemStack
 import ru.joutak.creakywars.resources.ResourceType
@@ -35,6 +35,7 @@ object GameConfig {
     val allowedBlocks = mutableSetOf<Material>()
 
     data class UpgradeCost(val currency: String, val amount: Int)
+
     val upgradeSettings = mutableMapOf<String, Any>()
 
     fun init() {
@@ -219,26 +220,14 @@ object GameConfig {
                 if (enchantment != null) {
                     meta.addEnchant(enchantment, level, true)
                 }
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+            }
         }
         item.itemMeta = meta
     }
 
     fun reload() {
         if (!file.exists()) return
-        config = YamlConfiguration.loadConfiguration(file)
         load()
-    }
-
-    fun getResourceType(id: String): ResourceType? {
-        return resourceTypes[id]
-    }
-
-    fun getTradesByCategory(category: String): List<Trade> {
-        return trades.filter { it.category == category }
-    }
-
-    fun getAllCategories(): List<String> {
-        return trades.map { it.category }.distinct()
     }
 }

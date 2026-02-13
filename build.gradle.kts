@@ -26,7 +26,6 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     compileOnly("com.onarandombox.multiversecore:multiverse-core:4.3.14")
 
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
     implementation("ru.joutak:minigamesapi:3.3.6-117")
     implementation("org.mariadb.jdbc:mariadb-java-client:3.5.7")

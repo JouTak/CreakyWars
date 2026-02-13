@@ -1,6 +1,7 @@
 package ru.joutak.creakywars.upgrades
 
 import org.bukkit.Bukkit
+import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.Sound
 import org.bukkit.event.EventHandler
@@ -15,7 +16,6 @@ import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.GameManager
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
-import org.bukkit.GameMode
 
 @Suppress("DEPRECATION")
 class UpgradeListener : Listener {
@@ -87,7 +87,8 @@ class UpgradeListener : Listener {
 
         if (event.from.blockX == event.to?.blockX &&
             event.from.blockZ == event.to?.blockZ &&
-            event.from.blockY == event.to?.blockY) return
+            event.from.blockY == event.to?.blockY
+        ) return
 
         val playerTeam = game.getTeam(player) ?: return
         val range = GameConfig.upgradeSettings["trap_range"] as? Int ?: 15

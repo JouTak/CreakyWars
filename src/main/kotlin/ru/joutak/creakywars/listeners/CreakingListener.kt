@@ -1,11 +1,6 @@
 package ru.joutak.creakywars.listeners
 
-import org.bukkit.Bukkit
-import org.bukkit.GameMode
-import org.bukkit.Location
-import org.bukkit.Material
-import org.bukkit.NamespacedKey
-import org.bukkit.Sound
+import org.bukkit.*
 import org.bukkit.entity.Creaking
 import org.bukkit.entity.Mob
 import org.bukkit.entity.Player
@@ -17,13 +12,13 @@ import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.metadata.FixedMetadataValue
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.scheduler.BukkitTask
+import ru.joutak.creakywars.arenas.ArenaState
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.Game
 import ru.joutak.creakywars.game.GameManager
-import ru.joutak.creakywars.arenas.ArenaState
 import ru.joutak.creakywars.utils.PluginManager
 import java.lang.reflect.Method
-import java.util.UUID
+import java.util.*
 
 class CreakingListener : Listener {
 
@@ -179,8 +174,8 @@ class CreakingListener : Listener {
         private fun resolveMoveTo(pf: Any): Method? {
             return pf.javaClass.methods.firstOrNull { m ->
                 m.name == "moveTo" && m.parameterCount == 2 &&
-                    Location::class.java.isAssignableFrom(m.parameterTypes[0]) &&
-                    (m.parameterTypes[1] == java.lang.Double.TYPE || m.parameterTypes[1] == java.lang.Double::class.java)
+                        Location::class.java.isAssignableFrom(m.parameterTypes[0]) &&
+                        (m.parameterTypes[1] == java.lang.Double.TYPE || m.parameterTypes[1] == java.lang.Double::class.java)
             }
         }
 
@@ -435,7 +430,8 @@ class CreakingListener : Listener {
             if (creaking.location.distanceSquared(target) < 12.0 * 12.0) return
 
             val now = System.currentTimeMillis()
-            val meta = creaking.getMetadata("sabotage_until").firstOrNull { it.owningPlugin == PluginManager.getPlugin() }
+            val meta =
+                creaking.getMetadata("sabotage_until").firstOrNull { it.owningPlugin == PluginManager.getPlugin() }
             val until = meta?.asLong() ?: 0L
             if (until > now) return
             creaking.setMetadata("sabotage_until", FixedMetadataValue(PluginManager.getPlugin(), now + 2500L))
@@ -556,12 +552,6 @@ class CreakingListener : Listener {
     fun onCreakingChangeBlock(event: EntityChangeBlockEvent) {
         val creaking = event.entity as? Creaking ?: return
 
-        val block = event.block
-
-        if (GameConfig.allowedBlocks.contains(block.type)) {
-            event.isCancelled = true
-        } else {
-            event.isCancelled = true
-        }
+        event.isCancelled = true
     }
 }
