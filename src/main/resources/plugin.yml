@@ -1,12 +1,26 @@
 name: ${NAME}
 version: ${VERSION}
 api-version: ${MINECRAFT_VERSION}
-main: ru.joutak.template.EmptyPlugin
-description: 'A template plugin'
-authors: ['EnderDissa', 'Stunnerer', 's4dnex']
-contributors: ['technosimp']
+main: ru.joutak.creakywars.CreakyWars
+description: 'creakywars'
+authors: [ 'Kostyamops', 'EnderDissa' ]
 website: ${WEBSITE}
 
-depend: []
+depend: [ Multiverse-Core ]
+
+commands:
+  creakywars:
+    description: "CreakyWars admin utilities"
+    aliases: [ cw ]
+    usage: "/creakywars help"
+
+permissions:
+  creakywars.admin:
+    description: "Admin tools for CreakyWars"
+    default: op
+  creakywars.admin.danger:
+    description: "Dangerous admin actions (end/phase/cleanup)"
+    default: op
+
 libraries:
   - 'org.jetbrains.kotlin:kotlin-stdlib:${KOTLIN_VERSION}'

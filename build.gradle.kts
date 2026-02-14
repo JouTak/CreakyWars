@@ -18,11 +18,17 @@ repositories {
     maven("https://oss.sonatype.org/content/groups/public/") {
         name = "sonatype"
     }
+    maven("https://repo.onarandombox.com/content/groups/public/")
+    maven("https://maven.joutak.ru/snapshots")
 }
 
 dependencies {
-    compileOnly(libs.kotlin)
-    compileOnly(libs.paper)
+    compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+    compileOnly("com.onarandombox.multiversecore:multiverse-core:4.3.14")
+
+    implementation("org.jetbrains.kotlin:kotlin-stdlib")
+    implementation("ru.joutak:minigamesapi:3.3.6-117")
+    implementation("org.mariadb.jdbc:mariadb-java-client:3.5.7")
 }
 
 kotlin {
@@ -74,6 +80,7 @@ tasks.processResources {
 
 tasks.shadowJar {
     archiveFileName.set("${project.name}-${project.version}.jar")
+    relocate("kotlin", "ru.joutak.creakywars.libs.kotlin")
 
     if (System.getenv("TEST_PLUGIN_BUILD") != null) {
         val serverPath = System.getenv("SERVER_PATH")
