@@ -156,21 +156,21 @@ object GameConfig {
 
             val metaSection = infestationSection.getConfigurationSection("item-meta") ?: return
 
-            val displayName = metaSection.getString("name", "Заражённый блок")!!
             val description = metaSection.getString("description", "При разрушении высвобождает рой враждебных мобов...")!!
+            val name = metaSection.getString("name", "Заражённый блок")!!
 
             val key = NamespacedKey(plugin, "infested-block")
 
             val meta = item.itemMeta
-            meta.displayName(Component.text(displayName).decoration(TextDecoration.ITALIC, false).color(NamedTextColor.YELLOW))
+            meta.displayName(Component.text(name).decoration(TextDecoration.ITALIC, false).color(NamedTextColor.YELLOW))
             meta.lore(listOf(Component.text(description).decoration(TextDecoration.ITALIC, false)))
             meta.persistentDataContainer.set(key, PersistentDataType.BOOLEAN, true)
             item.itemMeta = meta
 
             val cost = parseCost(infestationSection.getString("cost", "rubber_mid:16")!!)
-            val category = infestationSection.getString("category", "special")!!
+            val category = infestationSection.getString("category", "blocks")!!
 
-            trades.add(Trade("infested-block", cost, item, displayName, category))
+            trades.add(Trade("infested-block", cost, item, name, category))
 
             infestedEntity = EntityType.valueOf(infestationSection.getString("entity", "SILVERFISH")!!)
             infestedSpawnChance = infestationSection.getDouble("chance-next", 0.7)

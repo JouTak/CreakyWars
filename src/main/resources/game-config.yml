@@ -58,7 +58,7 @@ infestation:
     description: "При разрушении высвобождает рой враждебных мобов..."
   material: CRACKED_STONE_BRICKS
   cost: "rubber_mid:16"
-  category: "special"
+  category: "blocks"
   entity: SILVERFISH
   chance-next: 0.7
   max-spawned: 5

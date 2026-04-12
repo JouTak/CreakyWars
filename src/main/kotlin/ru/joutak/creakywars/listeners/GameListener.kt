@@ -79,7 +79,7 @@ class GameListener(val plugin: Plugin) : Listener {
 
         for (i in 0..GameConfig.maxInfested) {
             if (Random.nextDouble() <= bufferChance) {
-                w.spawnEntity(loc.add(Random.nextDouble(0.1), 0.0, Random.nextDouble(0.1)), GameConfig.infestedEntity)
+                w.spawnEntity(loc.clone().add(0.5 + Random.nextDouble(0.1), 0.0, 0.5 + Random.nextDouble(0.1)), GameConfig.infestedEntity)
             }
 
             bufferChance *= GameConfig.infestedSpawnChance
