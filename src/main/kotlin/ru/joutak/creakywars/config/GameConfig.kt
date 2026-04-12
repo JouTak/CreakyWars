@@ -8,6 +8,7 @@ import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.enchantments.Enchantment
+import org.bukkit.entity.EntityType
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
@@ -36,6 +37,10 @@ object GameConfig {
     var voidKillHeight: Int = 50
     var infiniteFood: Boolean = true
     val allowedBlocks = mutableSetOf<Material>()
+
+    var infestedEntity: EntityType = EntityType.SILVERFISH
+    var infestedSpawnChance: Double = 0.7
+    var maxInfested: Int = 5
 
     data class UpgradeCost(val currency: String, val amount: Int)
 
@@ -160,6 +165,10 @@ object GameConfig {
             val category = infestationSection.getString("category", "special")!!
 
             trades.add(Trade("infested-block", cost, item, displayName, category))
+
+            infestedEntity = EntityType.valueOf(infestationSection.getString("entity", "SILVERFISH")!!)
+            infestedSpawnChance = infestationSection.getDouble("chance-next", 0.7)
+            maxInfested = infestationSection.getInt("max-spawned", 5)
         } catch (e: Exception) {
             // Log error
         }
