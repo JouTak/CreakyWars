@@ -3,11 +3,14 @@
 package ru.joutak.creakywars.config
 
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.inventory.ItemStack
+import org.bukkit.persistence.PersistentDataType
+import org.bukkit.plugin.Plugin
 import ru.joutak.creakywars.resources.ResourceType
 import ru.joutak.creakywars.trading.Trade
 import ru.joutak.creakywars.utils.PluginManager
@@ -68,6 +71,7 @@ object GameConfig {
         loadResources()
         loadTrades()
         loadUpgrades()
+        loadInfestation(plugin)
 
         PluginManager.getLogger().info("✓ Игровой конфиг загружен!")
         PluginManager.getLogger().info("  - Разрешенных блоков: ${allowedBlocks.size}")
@@ -131,6 +135,33 @@ object GameConfig {
             } catch (e: Exception) {
                 // Log error
             }
+        }
+    }
+
+    private fun loadInfestation(plugin: Plugin) {
+        val infestationSection = config.getConfigurationSection("infestation") ?: return
+
+        try {
+            val material = Material.valueOf(infestationSection.getString("material", "CRACKED_STONE_BRICKS")!!.uppercase())
+
+            val item = ItemStack(material, 1)
+
+            val metaSection = infestationSection.getConfigurationSection("item-meta") ?: return
+            val displayName = metaSection.getString("name", "Заражённый блок")!!
+            val key = NamespacedKey(plugin, "infested-block")
+
+            val meta = item.itemMeta
+            meta.setDisplayName(displayName)
+            meta.lore = listOf(metaSection.getString("description", "При разрушении высвобождает рой враждебных мобов...")!!)
+            meta.persistentDataContainer.set(key, PersistentDataType.BOOLEAN, true)
+            item.itemMeta = meta
+
+            val cost = parseCost(infestationSection.getString("cost", "rubber_mid:16")!!)
+            val category = infestationSection.getString("category", "special")!!
+
+            trades.add(Trade("infested-block", cost, item, displayName, category))
+        } catch (e: Exception) {
+            // Log error
         }
     }
 
