@@ -6,10 +6,12 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.World
 import org.bukkit.entity.Player
+import org.bukkit.entity.Silverfish
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockPlaceEvent
+import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.FoodLevelChangeEvent
 import org.bukkit.event.inventory.CraftItemEvent
@@ -81,6 +83,13 @@ class GameListener(val plugin: Plugin) : Listener {
             }
 
             bufferChance *= GameConfig.infestedSpawnChance
+        }
+    }
+
+    @EventHandler
+    fun onEntityChangeBlock(event: EntityChangeBlockEvent) {
+        if (event.entity is Silverfish) {
+            event.isCancelled = true
         }
     }
 
