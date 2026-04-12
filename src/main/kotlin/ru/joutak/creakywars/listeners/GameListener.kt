@@ -1,7 +1,10 @@
 package ru.joutak.creakywars.listeners
 
 import org.bukkit.GameMode
+import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
+import org.bukkit.World
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -12,6 +15,7 @@ import org.bukkit.event.entity.FoodLevelChangeEvent
 import org.bukkit.event.inventory.CraftItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
+import org.bukkit.plugin.Plugin
 import ru.joutak.creakywars.arenas.ArenaManager
 import ru.joutak.creakywars.arenas.ArenaState
 import ru.joutak.creakywars.config.GameConfig
@@ -19,7 +23,7 @@ import ru.joutak.creakywars.config.ScenarioConfig
 import ru.joutak.creakywars.game.GameManager
 
 @Suppress("DEPRECATION")
-class GameListener : Listener {
+class GameListener(val plugin: Plugin) : Listener {
 
     private fun isAllowedReplaceable(type: Material): Boolean {
         return when (type) {
@@ -53,9 +57,22 @@ class GameListener : Listener {
             return
         }
 
+        val loc = event.block.location
+
+        if (game.infestedBlocks.contains(loc)) {
+            game.infestedBlocks.remove(loc)
+            spawnInfested(game.arena.world, loc)
+            event.isDropItems = false
+            return
+        }
+
         if (!GameConfig.allowedBlocks.contains(type)) {
             event.isCancelled = true
         }
+    }
+
+    private fun spawnInfested(w: World, loc: Location) {
+        w.spawnEntity(loc, GameConfig.infestedEntity)
     }
 
     @EventHandler
@@ -79,6 +96,11 @@ class GameListener : Listener {
         val replacedType = event.blockReplacedState.type
         if (!replacedType.isAir && !isAllowedReplaceable(replacedType)) {
             event.isCancelled = true
+            return
+        }
+
+        if (event.itemInHand.itemMeta.persistentDataContainer.has(NamespacedKey(plugin, "infested-block"))) {
+            game.infestedBlocks.add(event.block.location)
             return
         }
 
