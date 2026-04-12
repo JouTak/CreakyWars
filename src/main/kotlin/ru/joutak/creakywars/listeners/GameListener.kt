@@ -21,6 +21,7 @@ import ru.joutak.creakywars.arenas.ArenaState
 import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.config.ScenarioConfig
 import ru.joutak.creakywars.game.GameManager
+import kotlin.random.Random
 
 @Suppress("DEPRECATION")
 class GameListener(val plugin: Plugin) : Listener {
@@ -72,7 +73,15 @@ class GameListener(val plugin: Plugin) : Listener {
     }
 
     private fun spawnInfested(w: World, loc: Location) {
-        w.spawnEntity(loc, GameConfig.infestedEntity)
+        var bufferChance = 1.0
+
+        for (i in 0..GameConfig.maxInfested) {
+            if (Random.nextDouble() <= bufferChance) {
+                w.spawnEntity(loc.add(Random.nextDouble(0.1), 0.0, Random.nextDouble(0.1)), GameConfig.infestedEntity)
+            }
+
+            bufferChance *= GameConfig.infestedSpawnChance
+        }
     }
 
     @EventHandler

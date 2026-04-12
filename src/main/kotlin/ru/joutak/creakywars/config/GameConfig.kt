@@ -2,6 +2,9 @@
 
 package ru.joutak.creakywars.config
 
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.configuration.ConfigurationSection
@@ -152,12 +155,15 @@ object GameConfig {
             val item = ItemStack(material, 1)
 
             val metaSection = infestationSection.getConfigurationSection("item-meta") ?: return
+
             val displayName = metaSection.getString("name", "Заражённый блок")!!
+            val description = metaSection.getString("description", "При разрушении высвобождает рой враждебных мобов...")!!
+
             val key = NamespacedKey(plugin, "infested-block")
 
             val meta = item.itemMeta
-            meta.setDisplayName(displayName)
-            meta.lore = listOf(metaSection.getString("description", "При разрушении высвобождает рой враждебных мобов...")!!)
+            meta.displayName(Component.text(displayName).decoration(TextDecoration.ITALIC, false).color(NamedTextColor.YELLOW))
+            meta.lore(listOf(Component.text(description).decoration(TextDecoration.ITALIC, false)))
             meta.persistentDataContainer.set(key, PersistentDataType.BOOLEAN, true)
             item.itemMeta = meta
 
