@@ -77,9 +77,9 @@ object GameConfig {
         loadDayNightCycle()
         loadRespawnSettings()
         loadResources()
-        loadTrades()
+        loadTrades(plugin)
         loadUpgrades()
-        loadInfestation(plugin)
+        loadInfestation()
 
         PluginManager.getLogger().info("✓ Игровой конфиг загружен!")
         PluginManager.getLogger().info("  - Разрешенных блоков: ${allowedBlocks.size}")
@@ -146,32 +146,10 @@ object GameConfig {
         }
     }
 
-    private fun loadInfestation(plugin: Plugin) {
+    private fun loadInfestation() {
         val infestationSection = config.getConfigurationSection("infestation") ?: return
 
         try {
-            val material = Material.valueOf(infestationSection.getString("material", "CRACKED_STONE_BRICKS")!!.uppercase())
-
-            val item = ItemStack(material, 1)
-
-            val metaSection = infestationSection.getConfigurationSection("item-meta") ?: return
-
-            val description = metaSection.getString("description", "При разрушении высвобождает рой враждебных мобов...")!!
-            val name = metaSection.getString("name", "Заражённый блок")!!
-
-            val key = NamespacedKey(plugin, "infested-block")
-
-            val meta = item.itemMeta
-            meta.displayName(Component.text(name).decoration(TextDecoration.ITALIC, false).color(NamedTextColor.YELLOW))
-            meta.lore(listOf(Component.text(description).decoration(TextDecoration.ITALIC, false)))
-            meta.persistentDataContainer.set(key, PersistentDataType.BOOLEAN, true)
-            item.itemMeta = meta
-
-            val cost = parseCost(infestationSection.getString("cost", "rubber_mid:16")!!)
-            val category = infestationSection.getString("category", "blocks")!!
-
-            trades.add(Trade("infested-block", cost, item, name, category))
-
             infestedEntity = EntityType.valueOf(infestationSection.getString("entity", "SILVERFISH")!!)
             infestedSpawnChance = infestationSection.getDouble("chance-next", 0.7)
             maxInfested = infestationSection.getInt("max-spawned", 5)
@@ -180,7 +158,7 @@ object GameConfig {
         }
     }
 
-    private fun loadTrades() {
+    private fun loadTrades(plugin: Plugin) {
         trades.clear()
         val tradesSection = config.getConfigurationSection("trades") ?: return
         for (key in tradesSection.getKeys(false)) {
@@ -194,11 +172,35 @@ object GameConfig {
                 if (enchantments.isNotEmpty()) {
                     applyEnchantments(result, enchantments)
                 }
+                val metaSection = section.getConfigurationSection("item-meta")
+                if (metaSection != null) {
+                    applyMeta(key, result, metaSection, plugin)
+                }
                 trades.add(Trade(key, cost, result, displayName, category))
             } catch (e: Exception) {
                 // Log error
             }
         }
+    }
+
+    private fun applyMeta(key: String?, item: ItemStack, section: ConfigurationSection, plugin: Plugin) {
+        val meta = item.itemMeta ?: return
+
+        if (key != null) {
+            meta.persistentDataContainer.set(NamespacedKey(plugin, key), PersistentDataType.BOOLEAN, true)
+        }
+
+        val nameString = section.getString("name")
+        if (nameString != null) {
+            meta.displayName(Component.text(nameString).decoration(TextDecoration.ITALIC, false).color(NamedTextColor.YELLOW))
+        }
+
+        val descriptionString = section.getString("description")
+        if (descriptionString != null) {
+            meta.lore(listOf(Component.text(descriptionString)))
+        }
+
+        item.itemMeta = meta
     }
 
     private fun loadUpgrades() {

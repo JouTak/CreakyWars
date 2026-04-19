@@ -117,7 +117,7 @@ class GameListener(val plugin: Plugin) : Listener {
             return
         }
 
-        if (event.itemInHand.itemMeta.persistentDataContainer.has(NamespacedKey(plugin, "infested-block"))) {
+        if (event.itemInHand.itemMeta.persistentDataContainer.has(NamespacedKey(plugin, "infested_block"))) {
             game.infestedBlocks.add(event.block.location)
             return
         }
