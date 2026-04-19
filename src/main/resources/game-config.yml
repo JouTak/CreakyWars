@@ -53,12 +53,6 @@ day-night-cycle:
   creaking-break-speed: 10.0
 
 infestation:
-  item-meta:
-    name: "Заражённый блок"
-    description: "При разрушении высвобождает рой враждебных мобов..."
-  material: CRACKED_STONE_BRICKS
-  cost: "rubber_mid:16"
-  category: "blocks"
   entity: SILVERFISH
   chance-next: 0.7
   max-spawned: 5
@@ -123,6 +117,15 @@ trades:
     result: "OBSIDIAN:1"
     display-name: "Обсидиан"
     category: "blocks"
+
+  infested_block:
+    cost: "rubber_mid:16"
+    result: "CRACKED_STONE_BRICKS:1"
+    display-name: "Заражённый блок"
+    category: "blocks"
+    item-meta:
+      name: "Заражённый блок"
+      description: "При разрушении высвобождает рой враждебных мобов..."
 
   stone_sword:
     cost: "rubber_low:10"
