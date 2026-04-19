@@ -80,7 +80,7 @@ class CreakyWars : JavaPlugin() {
     private fun registerEvents() {
         val pm = server.pluginManager
         pm.registerEvents(PlayerListener(), this)
-        pm.registerEvents(GameListener(), this)
+        pm.registerEvents(GameListener(this), this)
         pm.registerEvents(ExplosivesListener(), this)
         pm.registerEvents(EyeblossomListener(), this)
         pm.registerEvents(TraderListener(), this)

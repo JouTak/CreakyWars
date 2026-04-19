@@ -52,6 +52,11 @@ day-night-cycle:
   creaking-max-per-player: 2
   creaking-break-speed: 10.0
 
+infestation:
+  entity: SILVERFISH
+  chance-next: 0.7
+  max-spawned: 5
+
 respawn:
   delay-seconds: 10
   spectator-mode: true
@@ -112,6 +117,15 @@ trades:
     result: "OBSIDIAN:1"
     display-name: "Обсидиан"
     category: "blocks"
+
+  infested_block:
+    cost: "rubber_mid:16"
+    result: "CRACKED_STONE_BRICKS:1"
+    display-name: "Заражённый блок"
+    category: "blocks"
+    item-meta:
+      name: "Заражённый блок"
+      description: "При разрушении высвобождает рой враждебных мобов..."
 
   stone_sword:
     cost: "rubber_low:10"

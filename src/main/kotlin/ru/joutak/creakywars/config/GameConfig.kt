@@ -2,12 +2,19 @@
 
 package ru.joutak.creakywars.config
 
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.enchantments.Enchantment
+import org.bukkit.entity.EntityType
 import org.bukkit.inventory.ItemStack
+import org.bukkit.persistence.PersistentDataType
+import org.bukkit.plugin.Plugin
 import ru.joutak.creakywars.resources.ResourceType
 import ru.joutak.creakywars.trading.Trade
 import ru.joutak.creakywars.utils.PluginManager
@@ -33,6 +40,10 @@ object GameConfig {
     var voidKillHeight: Int = 50
     var infiniteFood: Boolean = true
     val allowedBlocks = mutableSetOf<Material>()
+
+    var infestedEntity: EntityType = EntityType.SILVERFISH
+    var infestedSpawnChance: Double = 0.7
+    var maxInfested: Int = 5
 
     data class UpgradeCost(val currency: String, val amount: Int)
 
@@ -66,8 +77,9 @@ object GameConfig {
         loadDayNightCycle()
         loadRespawnSettings()
         loadResources()
-        loadTrades()
+        loadTrades(plugin)
         loadUpgrades()
+        loadInfestation()
 
         PluginManager.getLogger().info("✓ Игровой конфиг загружен!")
         PluginManager.getLogger().info("  - Разрешенных блоков: ${allowedBlocks.size}")
@@ -134,7 +146,19 @@ object GameConfig {
         }
     }
 
-    private fun loadTrades() {
+    private fun loadInfestation() {
+        val infestationSection = config.getConfigurationSection("infestation") ?: return
+
+        try {
+            infestedEntity = EntityType.valueOf(infestationSection.getString("entity", "SILVERFISH")!!)
+            infestedSpawnChance = infestationSection.getDouble("chance-next", 0.7)
+            maxInfested = infestationSection.getInt("max-spawned", 5)
+        } catch (e: Exception) {
+            // Log error
+        }
+    }
+
+    private fun loadTrades(plugin: Plugin) {
         trades.clear()
         val tradesSection = config.getConfigurationSection("trades") ?: return
         for (key in tradesSection.getKeys(false)) {
@@ -148,11 +172,35 @@ object GameConfig {
                 if (enchantments.isNotEmpty()) {
                     applyEnchantments(result, enchantments)
                 }
+                val metaSection = section.getConfigurationSection("item-meta")
+                if (metaSection != null) {
+                    applyMeta(key, result, metaSection, plugin)
+                }
                 trades.add(Trade(key, cost, result, displayName, category))
             } catch (e: Exception) {
                 // Log error
             }
         }
+    }
+
+    private fun applyMeta(key: String?, item: ItemStack, section: ConfigurationSection, plugin: Plugin) {
+        val meta = item.itemMeta ?: return
+
+        if (key != null) {
+            meta.persistentDataContainer.set(NamespacedKey(plugin, key), PersistentDataType.BOOLEAN, true)
+        }
+
+        val nameString = section.getString("name")
+        if (nameString != null) {
+            meta.displayName(Component.text(nameString).decoration(TextDecoration.ITALIC, false).color(NamedTextColor.YELLOW))
+        }
+
+        val descriptionString = section.getString("description")
+        if (descriptionString != null) {
+            meta.lore(listOf(Component.text(descriptionString)))
+        }
+
+        item.itemMeta = meta
     }
 
     private fun loadUpgrades() {
