@@ -77,7 +77,7 @@ class GameListener(val plugin: Plugin) : Listener {
     private fun spawnInfested(w: World, loc: Location) {
         var bufferChance = 1.0
 
-        for (i in 0..GameConfig.maxInfested) {
+        for (i in 1..GameConfig.maxInfested) {
             if (Random.nextDouble() <= bufferChance) {
                 w.spawnEntity(loc.clone().add(0.5 + Random.nextDouble(0.1), 0.0, 0.5 + Random.nextDouble(0.1)), GameConfig.infestedEntity)
             }
@@ -117,7 +117,9 @@ class GameListener(val plugin: Plugin) : Listener {
             return
         }
 
-        if (event.itemInHand.itemMeta.persistentDataContainer.has(NamespacedKey(plugin, "infested_block"))) {
+        val itemMeta = event.itemInHand.itemMeta
+
+        if (itemMeta != null && itemMeta.persistentDataContainer.has(NamespacedKey(plugin, "infested_block"))) {
             game.infestedBlocks.add(event.block.location)
             return
         }
