@@ -134,19 +134,6 @@ object ShopGui : Listener {
                         showTrade = newTier > currentTier
                     }
 
-                    isTool(tradeResultType) -> {
-                        val toolType = getToolType(tradeResultType)
-                        val newTier = getToolMaterialTier(tradeResultType)
-
-                        val currentTool = player.inventory.contents
-                            .filterNotNull()
-                            .firstOrNull { getToolType(it.type) == toolType }
-
-                        val currentTier = currentTool?.type?.let { getToolMaterialTier(it) } ?: 0
-
-                        showTrade = newTier > currentTier
-                    }
-
                     isSword(tradeResultType) -> {
                         val newTier = getToolMaterialTier(tradeResultType)
                         val currentTier = getCurrentSwordTier(player)
@@ -301,7 +288,6 @@ object ShopGui : Listener {
             }
 
             val isArmorTrade = isArmor(tradeResultType)
-            val isToolTrade = isTool(tradeResultType)
             val isSwordTrade = isSword(tradeResultType)
 
             if (loadout != null) {
@@ -312,23 +298,16 @@ object ShopGui : Listener {
                         )
                     } ?: 0
 
-                    isToolTrade -> player.inventory.contents.filterNotNull()
-                        .firstOrNull { getToolType(it.type) == getToolType(tradeResultType) }?.type?.let {
-                        getToolMaterialTier(
-                            it
-                        )
-                    } ?: 0
-
                     isSwordTrade -> getCurrentSwordTier(player)
                     else -> 0
                 }
                 val newTier = when {
                     isArmorTrade -> getArmorMaterialTier(tradeResultType)
-                    isToolTrade || isSwordTrade -> getToolMaterialTier(tradeResultType)
+                    isSwordTrade -> getToolMaterialTier(tradeResultType)
                     else -> 0
                 }
 
-                if (newTier <= currentTier && (isArmorTrade || isToolTrade || isSwordTrade)) {
+                if (newTier <= currentTier && (isArmorTrade || isSwordTrade)) {
                     MessageUtils.sendMessage(player, "§cУ вас уже есть предмет такого же или лучшего уровня!")
                     player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 1f, 1f)
                     updateInventoryItems(clickedInventory, player, game, currentCategory)
@@ -373,10 +352,6 @@ object ShopGui : Listener {
 
                 isSwordTrade && loadout != null -> {
                     loadout.upgradeSword(resultItem)
-                }
-
-                isToolTrade && loadout != null -> {
-                    loadout.addOrReplaceTool(resultItem)
                 }
 
                 tradeResultType == Material.ELYTRA -> {
