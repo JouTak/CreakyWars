@@ -86,6 +86,36 @@ resources:
     spawn-period: -1  # NOT spawn automatically
     tier: 3
 
+shop-categories:
+  blocks:
+    display-name: "§aБлоки"
+    icon: "WHITE_TERRACOTTA"
+    slot: 45
+
+  melee:
+    display-name: "§cБлижний бой"
+    icon: "IRON_SWORD"
+    slot: 46
+
+  distance:
+    displayname: "§2Дальний бой"
+    icon: "CROSSBOW"
+    slot: 47
+
+  armor:
+    display-name: "§9Броня"
+    icon: "IRON_CHESTPLATE"
+    slot: 48
+
+  tools:
+    display-name: "§eИнструменты"
+    icon: "IRON_PICKAXE"
+    slot: 49
+
+  special:
+    display-name: "§dОсобое"
+    icon: "GOLDEN_APPLE"
+    slot: 50
 
 trades:
   wool:
@@ -131,25 +161,25 @@ trades:
     cost: "rubber_low:10"
     result: "STONE_SWORD:1"
     display-name: "Медный меч"
-    category: "swords"
+    category: "melee"
 
   iron_sword:
     cost: "rubber_mid:7"
     result: "IRON_SWORD:1"
     display-name: "Железный меч"
-    category: "swords"
+    category: "melee"
 
   netherite_sword:
     cost: "eyeblossom:4"
     result: "NETHERITE_SWORD:1"
     display-name: "Незеритовый меч"
-    category: "swords"
+    category: "melee"
 
   knockback_stick:
     cost: "rubber_mid:20"
     result: "MACE:1"
     display-name: "Откидывающая булава"
-    category: "swords"
+    category: "melee"
     enchantments:
       - "KNOCKBACK:2"
 
