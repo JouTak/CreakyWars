@@ -87,6 +87,7 @@ object GameConfig {
         PluginManager.getLogger().info("✓ Игровой конфиг загружен!")
         PluginManager.getLogger().info("  - Разрешенных блоков: ${allowedBlocks.size}")
         PluginManager.getLogger().info("  - Ресурсов: ${resourceTypes.size}")
+        PluginManager.getLogger().info("  - Категорий магазина: ${shopCategories.size}")
         PluginManager.getLogger().info("  - Трейдов: ${trades.size}")
     }
 
@@ -161,33 +162,43 @@ object GameConfig {
         }
     }
 
-    private fun loadShopCategories(){
+    private fun loadShopCategories() {
         shopCategories.clear()
 
         val categoriesSection = config.getConfigurationSection("shop-categories") ?: return
         val usedSlots = mutableSetOf<Int>()
+
         for (key in categoriesSection.getKeys(false)) {
-            val section = config.getConfigurationSection(key) ?: continue
+            val section = categoriesSection.getConfigurationSection(key) ?: continue
+
             try {
                 val displayName = section.getString("display-name", key)!!
                 val iconName = section.getString("icon", "STONE")!!.uppercase()
                 val icon = Material.valueOf(iconName)
                 val slot = section.getInt("slot", 45)
 
-                if (slot !in 0..53) { continue }
-                if (!usedSlots.add(slot)){
+                if (slot !in 36..53) {
+                    PluginManager.getLogger().warning("Категория $key пропущена: слот $slot вне диапазона 36..53")
                     continue
                 }
+
+                if (!usedSlots.add(slot)) {
+                    PluginManager.getLogger().warning("Категория $key пропущена: слот $slot уже занят")
+                    continue
+                }
+
                 shopCategories[key] = ShopCategory(
                     id = key,
                     displayName = displayName,
                     icon = icon,
                     slot = slot
                 )
-
-            } catch (_: Exception){
+            } catch (e: Exception) {
+                PluginManager.getLogger().warning("Ошибка загрузки категории $key: ${e.message}")
             }
         }
+
+        PluginManager.getLogger().info("  - Категории магазина: ${shopCategories.keys.joinToString(", ")}")
     }
 
     private fun loadTrades(plugin: Plugin) {
@@ -212,7 +223,7 @@ object GameConfig {
                 }
                 trades.add(Trade(key, cost, result, displayName, category))
             } catch (e: Exception) {
-                // Log error
+                PluginManager.getLogger().warning("Ошибка загрузки трейда $key: ${e.message}")
             }
         }
     }
