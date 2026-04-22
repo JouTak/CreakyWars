@@ -38,8 +38,8 @@ object ShopGui : Listener {
 
     private const val MENU_TITLE_PREFIX = "§6§lМагазин"
 
-    private val categories = List<ShopCategory>
-        get() = GameConfig.shopCategories.values.sortedBy { {it.slot} }
+    private val categories: List<ShopCategory>
+        get() = GameConfig.shopCategories.values.sortedBy { it.slot }
 
     private val categoryItems = mapOf(
         "blocks" to Triple(Material.WHITE_WOOL, "§aБлоки", 45),
@@ -108,7 +108,7 @@ object ShopGui : Listener {
         }
         val categorySlots = categories.map {it.slot }.toSet()
 
-        for (slot in 36.53) {
+        for (slot in 36..53) {
             if (slot !in categorySlots) {
                 inventory.setItem(slot, separator)
             }
