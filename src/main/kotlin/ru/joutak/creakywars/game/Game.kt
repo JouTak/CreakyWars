@@ -88,6 +88,8 @@ class Game(
     private val teamByPlayerAtStart = mutableMapOf<java.util.UUID, Int>()
     private val teamEliminatedAtMs = mutableMapOf<Int, Long>()
 
+    val infestedBlocks = mutableSetOf<Location>()
+
     val players: List<Player>
         get() = playerData.keys.mapNotNull { Bukkit.getPlayer(it) }
 
