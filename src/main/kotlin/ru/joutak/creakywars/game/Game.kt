@@ -382,7 +382,7 @@ class Game(
         spectatorEnsureGamemodeTasks[uuid] = task
 
         teamScoreboard.addPlayer(player)
-        teamScoreboard.update()
+        teamScoreboard.update(0L)
         phaseBossBar.addPlayer(player)
 
         MessageUtils.sendMessage(
@@ -525,7 +525,7 @@ class Game(
             teamScoreboard.addPlayer(player)
         }
 
-        teamScoreboard.update()
+        teamScoreboard.update(0L)
 
         setupTeamChests()
 
@@ -609,13 +609,15 @@ class Game(
     private fun tick() {
         gameTick++
 
+        var remainingTicks = 0L
+
         if (currentPhaseIndex < ScenarioConfig.phases.size) {
             val currentPhase = ScenarioConfig.phases[currentPhaseIndex]
 
             val endAt = currentPhase.endAtTick
 
             val totalTicks: Long
-            val remainingTicks: Long
+
             val phaseFinished: Boolean
 
             if (endAt != null) {
@@ -656,7 +658,7 @@ class Game(
 
         if (gameTick % 20L == 0L) {
             // Scoreboard should keep updating even without core-destroy events (e.g. team elimination on death).
-            teamScoreboard.update()
+            teamScoreboard.update(remainingTicks)
             checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
         }
     }
@@ -672,7 +674,7 @@ class Game(
 
         phaseBossBar.create(phaseIndex)
 
-        teamScoreboard.update()
+        teamScoreboard.update(0L)
 
         setPlayersGlowing(false)
         if (phase.glowPlayers) {
@@ -762,7 +764,7 @@ class Game(
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
                 }
 
-                teamScoreboard.update()
+                teamScoreboard.update(0L)
                 checkWinCondition()
                 return@Runnable
             }
@@ -781,7 +783,7 @@ class Game(
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
                 }
 
-                teamScoreboard.update()
+                teamScoreboard.update(0L)
                 checkWinCondition()
             }
         }, 1L)
@@ -873,7 +875,7 @@ class Game(
                 MessageUtils.sendMessage(player, "§c§lВаше ядро уничтожено!")
                 MessageUtils.sendTitle(player, "§c☠ ВЫБЫЛИ ☠", "§eВаше ядро уничтожено")
 
-                teamScoreboard.update()
+                teamScoreboard.update(0L)
                 checkWinCondition()
                 return@Runnable
             }
@@ -887,7 +889,7 @@ class Game(
 
                 MessageUtils.sendMessage(player, "§c§lУ команды закончились жизни!")
 
-                teamScoreboard.update()
+                teamScoreboard.update(0L)
                 checkWinCondition()
                 return@Runnable
             }
@@ -1623,7 +1625,7 @@ class Game(
             }
         }
 
-        teamScoreboard.update()
+        teamScoreboard.update(0L)
 
         getAudiencePlayers().forEach {
             it.playSound(it.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f)
