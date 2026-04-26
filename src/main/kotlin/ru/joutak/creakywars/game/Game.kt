@@ -384,6 +384,7 @@ class Game(
         teamScoreboard.addPlayer(player)
         teamScoreboard.update(0L)
         phaseBossBar.addPlayer(player)
+        dayNightCycle.timeBossBar.addPlayer(player)
 
         MessageUtils.sendMessage(
             player,
@@ -412,6 +413,10 @@ class Game(
         }
         try {
             teamScoreboard.removePlayer(player)
+        } catch (_: Exception) {
+        }
+        try {
+            dayNightCycle.timeBossBar.removePlayer(player)
         } catch (_: Exception) {
         }
 
