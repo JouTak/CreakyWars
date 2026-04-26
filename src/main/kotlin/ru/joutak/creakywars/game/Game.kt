@@ -55,7 +55,6 @@ class Game(
     private val isDebugMode = AdminConfig.debugMode
 
     private val dayNightCycle = DayNightCycle(this)
-    private val phaseBossBar = PhaseBossBar(this)
     private val teamScoreboard = TeamScoreboard(this)
     private val teamChestListener: TeamChestListener
 
@@ -272,7 +271,7 @@ class Game(
 
         try {
             // ensure bossbar looks sane after skip
-            phaseBossBar.updateProgress(0L, 1L)
+            dayNightCycle.timeBossBar.updateProgress(0L, 1L)
         } catch (_: Exception) {
         }
     }
@@ -383,7 +382,6 @@ class Game(
 
         teamScoreboard.addPlayer(player)
         teamScoreboard.update(0L)
-        phaseBossBar.addPlayer(player)
         dayNightCycle.timeBossBar.addPlayer(player)
 
         MessageUtils.sendMessage(
@@ -407,10 +405,6 @@ class Game(
 
         spectators.remove(uuid)
 
-        try {
-            phaseBossBar.removePlayer(player)
-        } catch (_: Exception) {
-        }
         try {
             teamScoreboard.removePlayer(player)
         } catch (_: Exception) {
@@ -636,10 +630,6 @@ class Game(
                 phaseFinished = elapsedTicks >= totalTicks
             }
 
-            if (gameTick % 10L == 0L || phaseFinished) {
-                phaseBossBar.updateProgress(remainingTicks, totalTicks)
-            }
-
             if (phaseFinished) {
                 endPhase(currentPhaseIndex)
 
@@ -676,8 +666,6 @@ class Game(
         val phase = ScenarioConfig.phases[phaseIndex]
 
         ResourceSpawner.setMultiplier(this, phase.resourceMultiplier)
-
-        phaseBossBar.create(phaseIndex)
 
         teamScoreboard.update(0L)
 
@@ -1523,7 +1511,7 @@ class Game(
             }
 
             try {
-                phaseBossBar.remove()
+                dayNightCycle.timeBossBar.remove()
             } catch (_: Exception) {
             }
 
