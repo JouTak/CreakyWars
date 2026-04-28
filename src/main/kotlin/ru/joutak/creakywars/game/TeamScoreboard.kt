@@ -202,7 +202,13 @@ class TeamScoreboard(private val game: Game) {
 
         seconds -= minutes * 60
 
-        return "§r$minutes:$seconds"
+        val nil = if (seconds < 10) {
+            "0"
+        } else {
+            ""
+        }
+
+        return "§r$minutes:$nil$seconds"
     }
 
     private fun formatTeamLine(team: Team, isViewerTeam: Boolean): String {

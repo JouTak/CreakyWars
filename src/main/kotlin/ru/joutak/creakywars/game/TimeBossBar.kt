@@ -43,7 +43,13 @@ class TimeBossBar(private val game: Game, private val dayNightCycle: DayNightCyc
 
         seconds -= minutes * 60
 
-        return "§r$minutes:$seconds"
+        val nil = if (seconds < 10) {
+            "0"
+        } else {
+            ""
+        }
+
+        return "§r$minutes:$nil$seconds"
     }
 
     /**
