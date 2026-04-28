@@ -39,6 +39,8 @@ class DayNightCycle(private val game: Game) {
     private val WAVE_DURATION = 100L
     private var waveTask: BukkitTask? = null
 
+    val timeBossBar = TimeBossBar(game, this)
+
     /**
      * Admin/testing helper: fast-forward the internal day/night clock without running per-tick side effects.
      * Used by /cw phase skip so phases and night events don't desync.
@@ -144,6 +146,8 @@ class DayNightCycle(private val game: Game) {
 
         startParticleTask()
 
+        timeBossBar.create()
+
         PluginManager.getLogger().info("Цикл дня/ночи запущен для арены #${game.arena.id}")
     }
 
@@ -165,6 +169,8 @@ class DayNightCycle(private val game: Game) {
         }
         eyeblossomBlocks.clear()
 
+        timeBossBar.remove()
+
         PluginManager.getLogger().info("Цикл дня/ночи остановлен для арены #${game.arena.id}")
     }
 
@@ -178,6 +184,10 @@ class DayNightCycle(private val game: Game) {
         }
 
         updateWorldTime()
+
+        if (currentTicks % 10 == 0L) {
+            timeBossBar.updateProgress(cycleDuration - currentTicks, cycleDuration)
+        }
 
         if (isNight) {
             updateEyeblossoms()
@@ -210,6 +220,8 @@ class DayNightCycle(private val game: Game) {
 
         game.arena.world.time = newTime
     }
+
+    fun currentTick(): Long = currentTicks
 
     private fun toggleDayNight() {
         isNight = !isNight

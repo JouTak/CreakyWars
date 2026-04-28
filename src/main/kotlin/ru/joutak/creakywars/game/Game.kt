@@ -55,7 +55,6 @@ class Game(
     private val isDebugMode = AdminConfig.debugMode
 
     private val dayNightCycle = DayNightCycle(this)
-    private val phaseBossBar = PhaseBossBar(this)
     private val teamScoreboard = TeamScoreboard(this)
     private val teamChestListener: TeamChestListener
 
@@ -274,7 +273,7 @@ class Game(
 
         try {
             // ensure bossbar looks sane after skip
-            phaseBossBar.updateProgress(0L, 1L)
+            dayNightCycle.timeBossBar.updateProgress(0L, 1L)
         } catch (_: Exception) {
         }
     }
@@ -384,8 +383,8 @@ class Game(
         spectatorEnsureGamemodeTasks[uuid] = task
 
         teamScoreboard.addPlayer(player)
-        teamScoreboard.update()
-        phaseBossBar.addPlayer(player)
+        teamScoreboard.update(0L)
+        dayNightCycle.timeBossBar.addPlayer(player)
 
         MessageUtils.sendMessage(
             player,
@@ -409,11 +408,11 @@ class Game(
         spectators.remove(uuid)
 
         try {
-            phaseBossBar.removePlayer(player)
+            teamScoreboard.removePlayer(player)
         } catch (_: Exception) {
         }
         try {
-            teamScoreboard.removePlayer(player)
+            dayNightCycle.timeBossBar.removePlayer(player)
         } catch (_: Exception) {
         }
 
@@ -527,7 +526,7 @@ class Game(
             teamScoreboard.addPlayer(player)
         }
 
-        teamScoreboard.update()
+        teamScoreboard.update(0L)
 
         setupTeamChests()
 
@@ -611,17 +610,18 @@ class Game(
     private fun tick() {
         gameTick++
 
+        var remainingTicks = 0L
+
         if (currentPhaseIndex < ScenarioConfig.phases.size) {
             val currentPhase = ScenarioConfig.phases[currentPhaseIndex]
 
             val endAt = currentPhase.endAtTick
 
             val totalTicks: Long
-            val remainingTicks: Long
+
             val phaseFinished: Boolean
 
             if (endAt != null) {
-                totalTicks = (endAt - phaseStartTick).coerceAtLeast(1L)
                 remainingTicks = (endAt - gameTick).coerceAtLeast(0L)
                 phaseFinished = gameTick >= endAt
             } else {
@@ -631,8 +631,8 @@ class Game(
                 phaseFinished = elapsedTicks >= totalTicks
             }
 
-            if (gameTick % 10L == 0L || phaseFinished) {
-                phaseBossBar.updateProgress(remainingTicks, totalTicks)
+            if (gameTick % 10 == 0L || phaseFinished) {
+                teamScoreboard.update(remainingTicks)
             }
 
             if (phaseFinished) {
@@ -657,8 +657,6 @@ class Game(
         }
 
         if (gameTick % 20L == 0L) {
-            // Scoreboard should keep updating even without core-destroy events (e.g. team elimination on death).
-            teamScoreboard.update()
             checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
         }
     }
@@ -672,9 +670,7 @@ class Game(
 
         ResourceSpawner.setMultiplier(this, phase.resourceMultiplier)
 
-        phaseBossBar.create(phaseIndex)
-
-        teamScoreboard.update()
+        teamScoreboard.update(0L)
 
         setPlayersGlowing(false)
         if (phase.glowPlayers) {
@@ -764,7 +760,7 @@ class Game(
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
                 }
 
-                teamScoreboard.update()
+                teamScoreboard.update(0L)
                 checkWinCondition()
                 return@Runnable
             }
@@ -783,7 +779,7 @@ class Game(
                     broadcastMessage("§c☠ §e${killer.name} §6совершил финальное убийство!")
                 }
 
-                teamScoreboard.update()
+                teamScoreboard.update(0L)
                 checkWinCondition()
             }
         }, 1L)
@@ -875,7 +871,7 @@ class Game(
                 MessageUtils.sendMessage(player, "§c§lВаше ядро уничтожено!")
                 MessageUtils.sendTitle(player, "§c☠ ВЫБЫЛИ ☠", "§eВаше ядро уничтожено")
 
-                teamScoreboard.update()
+                teamScoreboard.update(0L)
                 checkWinCondition()
                 return@Runnable
             }
@@ -889,7 +885,7 @@ class Game(
 
                 MessageUtils.sendMessage(player, "§c§lУ команды закончились жизни!")
 
-                teamScoreboard.update()
+                teamScoreboard.update(0L)
                 checkWinCondition()
                 return@Runnable
             }
@@ -1518,7 +1514,7 @@ class Game(
             }
 
             try {
-                phaseBossBar.remove()
+                dayNightCycle.timeBossBar.remove()
             } catch (_: Exception) {
             }
 
@@ -1625,7 +1621,7 @@ class Game(
             }
         }
 
-        teamScoreboard.update()
+        teamScoreboard.update(0L)
 
         getAudiencePlayers().forEach {
             it.playSound(it.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f)
