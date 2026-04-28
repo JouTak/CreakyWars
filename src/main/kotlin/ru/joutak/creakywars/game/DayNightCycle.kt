@@ -185,7 +185,9 @@ class DayNightCycle(private val game: Game) {
 
         updateWorldTime()
 
-        timeBossBar.updateProgress(cycleDuration - currentTicks, cycleDuration)
+        if (currentTicks % 10 == 0L) {
+            timeBossBar.updateProgress(cycleDuration - currentTicks, cycleDuration)
+        }
 
         if (isNight) {
             updateEyeblossoms()

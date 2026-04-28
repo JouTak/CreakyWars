@@ -620,7 +620,6 @@ class Game(
             val phaseFinished: Boolean
 
             if (endAt != null) {
-                totalTicks = (endAt - phaseStartTick).coerceAtLeast(1L)
                 remainingTicks = (endAt - gameTick).coerceAtLeast(0L)
                 phaseFinished = gameTick >= endAt
             } else {
@@ -628,6 +627,10 @@ class Game(
                 val elapsedTicks = (gameTick - phaseStartTick).coerceAtLeast(0L)
                 remainingTicks = (totalTicks - elapsedTicks).coerceAtLeast(0L)
                 phaseFinished = elapsedTicks >= totalTicks
+            }
+
+            if (gameTick % 10 == 0L || phaseFinished) {
+                teamScoreboard.update(remainingTicks)
             }
 
             if (phaseFinished) {
@@ -652,8 +655,6 @@ class Game(
         }
 
         if (gameTick % 20L == 0L) {
-            // Scoreboard should keep updating even without core-destroy events (e.g. team elimination on death).
-            teamScoreboard.update(remainingTicks)
             checkWinCondition(currentPhaseIndex >= ScenarioConfig.phases.size)
         }
     }
