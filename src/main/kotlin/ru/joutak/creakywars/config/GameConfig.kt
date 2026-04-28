@@ -18,6 +18,7 @@ import org.bukkit.plugin.Plugin
 import ru.joutak.creakywars.resources.ResourceType
 import ru.joutak.creakywars.trading.Trade
 import ru.joutak.creakywars.utils.PluginManager
+import ru.joutak.creakywars.trading.ShopCategory
 import java.io.File
 
 object GameConfig {
@@ -26,6 +27,7 @@ object GameConfig {
 
     val resourceTypes = mutableMapOf<String, ResourceType>()
     val trades = mutableListOf<Trade>()
+    val shopCategories = mutableMapOf<String, ShopCategory>()
 
     var dayDurationTicks: Long = 6000L
     var nightDurationTicks: Long = 6000L
@@ -77,6 +79,7 @@ object GameConfig {
         loadDayNightCycle()
         loadRespawnSettings()
         loadResources()
+        loadShopCategories()
         loadTrades(plugin)
         loadUpgrades()
         loadInfestation()
@@ -84,6 +87,7 @@ object GameConfig {
         PluginManager.getLogger().info("✓ Игровой конфиг загружен!")
         PluginManager.getLogger().info("  - Разрешенных блоков: ${allowedBlocks.size}")
         PluginManager.getLogger().info("  - Ресурсов: ${resourceTypes.size}")
+        PluginManager.getLogger().info("  - Категорий магазина: ${shopCategories.size}")
         PluginManager.getLogger().info("  - Трейдов: ${trades.size}")
     }
 
@@ -158,6 +162,45 @@ object GameConfig {
         }
     }
 
+    private fun loadShopCategories() {
+        shopCategories.clear()
+
+        val categoriesSection = config.getConfigurationSection("shop-categories") ?: return
+        val usedSlots = mutableSetOf<Int>()
+
+        for (key in categoriesSection.getKeys(false)) {
+            val section = categoriesSection.getConfigurationSection(key) ?: continue
+
+            try {
+                val displayName = section.getString("display-name", key)!!
+                val iconName = section.getString("icon", "STONE")!!.uppercase()
+                val icon = Material.valueOf(iconName)
+                val slot = section.getInt("slot", 45)
+
+                if (slot !in 36..53) {
+                    PluginManager.getLogger().warning("Категория $key пропущена: слот $slot вне диапазона 36..53")
+                    continue
+                }
+
+                if (!usedSlots.add(slot)) {
+                    PluginManager.getLogger().warning("Категория $key пропущена: слот $slot уже занят")
+                    continue
+                }
+
+                shopCategories[key] = ShopCategory(
+                    id = key,
+                    displayName = displayName,
+                    icon = icon,
+                    slot = slot
+                )
+            } catch (e: Exception) {
+                PluginManager.getLogger().warning("Ошибка загрузки категории $key: ${e.message}")
+            }
+        }
+
+        PluginManager.getLogger().info("  - Категории магазина: ${shopCategories.keys.joinToString(", ")}")
+    }
+
     private fun loadTrades(plugin: Plugin) {
         trades.clear()
         val tradesSection = config.getConfigurationSection("trades") ?: return
@@ -168,6 +211,8 @@ object GameConfig {
                 val result = parseItem(section.getString("result", "STONE_SWORD:1")!!)
                 val displayName = section.getString("display-name", key)!!
                 val category = section.getString("category", "special")!!
+                if (!shopCategories.containsKey(category)) { continue }
+                PluginManager.getLogger().warning("Trade $key skipped: category $category was not found")
                 val enchantments = section.getStringList("enchantments")
                 if (enchantments.isNotEmpty()) {
                     applyEnchantments(result, enchantments)
@@ -178,7 +223,7 @@ object GameConfig {
                 }
                 trades.add(Trade(key, cost, result, displayName, category))
             } catch (e: Exception) {
-                // Log error
+                PluginManager.getLogger().warning("Ошибка загрузки трейда $key: ${e.message}")
             }
         }
     }
