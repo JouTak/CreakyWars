@@ -546,7 +546,7 @@ class Game(
 
         CoreManager.initializeCores(this, teams)
 
-        ResourceSpawner.startSpawning(this)
+        ResourceSpawner.startSpawning(this, countAmplifier)
         TraderManager.spawnTraders(this)
 
         // Cosmetic label for the perk station ("МОЗГ") above each base upgrade block.
