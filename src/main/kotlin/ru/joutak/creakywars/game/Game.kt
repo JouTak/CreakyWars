@@ -500,6 +500,8 @@ class Game(
             PluginManager.getLogger().info("[DEBUG] Активных команд: ${activeTeams.size} из ${teams.size}")
         }
 
+        val teamCount = mutableMapOf<Team, Int>()
+
         activeTeams.forEachIndexed { index, team ->
             val spawnLocation = arena.mapConfig.teamSpawns.getOrNull(teams.indexOf(team))
             if (spawnLocation != null) {
@@ -513,6 +515,11 @@ class Game(
 
                     val playerData = getPlayerData(player)
                     if (playerData != null) {
+                        if (team in teamCount.keys) {
+                            teamCount[team] = teamCount[team]!!.plus(1)
+                        } else {
+                            teamCount[team] = 1
+                        }
                         val loadout = PlayerLoadout(player, team)
                         playerData.loadout = loadout
                         loadout.giveDefaultLoadout()
@@ -520,6 +527,14 @@ class Game(
                 }
             }
         }
+
+        val countAmplifier = if (teamCount.isEmpty()) {
+            1.0
+        } else {
+            1.0 + ((4 - teamCount.values.maxOrNull()!!) / 4.0)
+        }
+
+        PluginManager.getLogger().info("Установлен множитель по кол-ву игроков в команде: $countAmplifier")
 
         getAudiencePlayers().forEach { player ->
             teamScoreboard.addPlayer(player)
