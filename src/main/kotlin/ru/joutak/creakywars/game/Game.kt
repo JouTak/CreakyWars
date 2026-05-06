@@ -531,7 +531,7 @@ class Game(
         val countAmplifier = if (teamCount.isEmpty()) {
             1.0
         } else {
-            1.0 + ((4 - teamCount.values.maxOrNull()!!) / 4.0)
+            teamCount.values.maxOrNull()!! / 4.0
         }
 
         PluginManager.getLogger().info("Установлен множитель по кол-ву игроков в команде: $countAmplifier")
