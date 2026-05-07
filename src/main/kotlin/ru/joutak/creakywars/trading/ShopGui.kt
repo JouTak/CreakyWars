@@ -22,6 +22,7 @@ import ru.joutak.creakywars.config.GameConfig
 import ru.joutak.creakywars.game.Game
 import ru.joutak.creakywars.game.PlayerLoadout
 import ru.joutak.creakywars.game.Team
+import ru.joutak.creakywars.trading.ShopCategory
 import ru.joutak.creakywars.trading.Trade
 import ru.joutak.creakywars.utils.MessageUtils
 import ru.joutak.creakywars.utils.PluginManager
@@ -37,13 +38,8 @@ object ShopGui : Listener {
 
     private const val MENU_TITLE_PREFIX = "§6§lМагазин"
 
-    private val categories = mapOf(
-        "blocks" to "§aБлоки",
-        "swords" to "§cМечи",
-        "armor" to "§9Броня",
-        "tools" to "§eИнструменты",
-        "special" to "§dОсобое"
-    )
+    private val categories: List<ShopCategory>
+        get() = GameConfig.shopCategories.values.sortedBy { it.slot }
 
     private val categoryItems = mapOf(
         "blocks" to Triple(Material.WHITE_WOOL, "§aБлоки", 45),
@@ -64,7 +60,8 @@ object ShopGui : Listener {
     fun init() {}
 
     private fun openWithCategory(player: Player, game: Game, category: String) {
-        val title = "$MENU_TITLE_PREFIX - ${categories[category] ?: "§7?"}"
+        val categoryData = GameConfig.shopCategories[category]
+        val title = "$MENU_TITLE_PREFIX - ${categoryData?.displayName ?: "§7?"}"
         val inventory = Bukkit.createInventory(null, 54, title)
 
         updateInventoryItems(inventory, player, game, category)
@@ -83,33 +80,39 @@ object ShopGui : Listener {
     }
 
     fun open(player: Player, game: Game) {
-        openWithCategory(player, game, "blocks")
+        val firstCatefory = categories.firstOrNull()?.id ?: return
+        openWithCategory(player, game, firstCatefory)
     }
 
     private fun updateInventoryItems(inventory: Inventory, player: Player, game: Game, category: String) {
         inventory.clear()
 
-        for ((catId, catData) in categoryItems) {
-            val (icon, name, slot) = catData
-            val item = ItemStack(icon)
+        for (categoryData in categories) {
+            val item = ItemStack(categoryData.icon)
             val meta = item.itemMeta!!
-            meta.setDisplayName(name)
-            meta.persistentDataContainer.set(CATEGORY_KEY, PersistentDataType.STRING, catId)
+            meta.setDisplayName(categoryData.displayName)
+            meta.persistentDataContainer.set(CATEGORY_KEY, PersistentDataType.STRING, categoryData.id)
 
-            if (catId == category) {
+            if (categoryData.id == category) {
                 meta.lore = listOf("§a§lТекущая вкладка")
                 meta.addEnchant(Enchantment.UNBREAKING, 1, true)
             } else {
                 meta.lore = listOf("§7Нажмите для перехода")
             }
             item.itemMeta = meta
-            inventory.setItem(slot, item)
+            inventory.setItem(categoryData.slot, item)
         }
 
         val separator = ItemStack(Material.GRAY_STAINED_GLASS_PANE).apply {
             itemMeta = itemMeta!!.apply { setDisplayName(" ") }
         }
-        (36..44).plus(50..53).forEach { inventory.setItem(it, separator) }
+        val categorySlots = categories.map {it.slot }.toSet()
+
+        for (slot in 36..53) {
+            if (slot !in categorySlots) {
+                inventory.setItem(slot, separator)
+            }
+        }
 
         val loadout = game.getPlayerData(player)?.loadout
         var slotIndex = 0
@@ -130,19 +133,6 @@ object ShopGui : Listener {
                         val currentItem = loadout.getStoredArmor(armorType)
                         val currentTier = currentItem?.type?.let { getArmorMaterialTier(it) } ?: 0
                         val newTier = getArmorMaterialTier(tradeResultType)
-
-                        showTrade = newTier > currentTier
-                    }
-
-                    isTool(tradeResultType) -> {
-                        val toolType = getToolType(tradeResultType)
-                        val newTier = getToolMaterialTier(tradeResultType)
-
-                        val currentTool = player.inventory.contents
-                            .filterNotNull()
-                            .firstOrNull { getToolType(it.type) == toolType }
-
-                        val currentTier = currentTool?.type?.let { getToolMaterialTier(it) } ?: 0
 
                         showTrade = newTier > currentTier
                     }
@@ -301,7 +291,6 @@ object ShopGui : Listener {
             }
 
             val isArmorTrade = isArmor(tradeResultType)
-            val isToolTrade = isTool(tradeResultType)
             val isSwordTrade = isSword(tradeResultType)
 
             if (loadout != null) {
@@ -312,23 +301,16 @@ object ShopGui : Listener {
                         )
                     } ?: 0
 
-                    isToolTrade -> player.inventory.contents.filterNotNull()
-                        .firstOrNull { getToolType(it.type) == getToolType(tradeResultType) }?.type?.let {
-                        getToolMaterialTier(
-                            it
-                        )
-                    } ?: 0
-
                     isSwordTrade -> getCurrentSwordTier(player)
                     else -> 0
                 }
                 val newTier = when {
                     isArmorTrade -> getArmorMaterialTier(tradeResultType)
-                    isToolTrade || isSwordTrade -> getToolMaterialTier(tradeResultType)
+                    isSwordTrade -> getToolMaterialTier(tradeResultType)
                     else -> 0
                 }
 
-                if (newTier <= currentTier && (isArmorTrade || isToolTrade || isSwordTrade)) {
+                if (newTier <= currentTier && (isArmorTrade || isSwordTrade)) {
                     MessageUtils.sendMessage(player, "§cУ вас уже есть предмет такого же или лучшего уровня!")
                     player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 1f, 1f)
                     updateInventoryItems(clickedInventory, player, game, currentCategory)
@@ -373,10 +355,6 @@ object ShopGui : Listener {
 
                 isSwordTrade && loadout != null -> {
                     loadout.upgradeSword(resultItem)
-                }
-
-                isToolTrade && loadout != null -> {
-                    loadout.addOrReplaceTool(resultItem)
                 }
 
                 tradeResultType == Material.ELYTRA -> {

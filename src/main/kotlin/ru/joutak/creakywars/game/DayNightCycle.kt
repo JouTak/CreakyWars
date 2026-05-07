@@ -39,6 +39,8 @@ class DayNightCycle(private val game: Game) {
     private val WAVE_DURATION = 100L
     private var waveTask: BukkitTask? = null
 
+    val timeBossBar = TimeBossBar(game, this)
+
     /**
      * Admin/testing helper: fast-forward the internal day/night clock without running per-tick side effects.
      * Used by /cw phase skip so phases and night events don't desync.
@@ -144,6 +146,8 @@ class DayNightCycle(private val game: Game) {
 
         startParticleTask()
 
+        timeBossBar.create()
+
         PluginManager.getLogger().info("Цикл дня/ночи запущен для арены #${game.arena.id}")
     }
 
@@ -165,6 +169,8 @@ class DayNightCycle(private val game: Game) {
         }
         eyeblossomBlocks.clear()
 
+        timeBossBar.remove()
+
         PluginManager.getLogger().info("Цикл дня/ночи остановлен для арены #${game.arena.id}")
     }
 
@@ -178,6 +184,10 @@ class DayNightCycle(private val game: Game) {
         }
 
         updateWorldTime()
+
+        if (currentTicks % 10 == 0L) {
+            timeBossBar.updateProgress(cycleDuration - currentTicks, cycleDuration)
+        }
 
         if (isNight) {
             updateEyeblossoms()
@@ -210,6 +220,8 @@ class DayNightCycle(private val game: Game) {
 
         game.arena.world.time = newTime
     }
+
+    fun currentTick(): Long = currentTicks
 
     private fun toggleDayNight() {
         isNight = !isNight
@@ -608,8 +620,9 @@ class DayNightCycle(private val game: Game) {
     }
 
     private fun spawnWaveParticles(radius: Double) {
-        val particleCount = (radius * 2).toInt().coerceIn(30, 160)
+        val particleCount = (radius * 1.2).toInt().coerceIn(20, 80)
         val angleStep = (2 * Math.PI) / particleCount
+        val yStep = 3;
 
         val minY = WAVE_CENTER.y - 5
         val maxY = WAVE_CENTER.y + 5
@@ -619,19 +632,20 @@ class DayNightCycle(private val game: Game) {
             val x = WAVE_CENTER.x + radius * cos(angle)
             val z = WAVE_CENTER.z + radius * sin(angle)
 
-            for (y in minY.toInt()..maxY.toInt()) {
+            for (y in minY.toInt()..maxY.toInt() step yStep) {
 
                 val particleLoc = Location(game.arena.world, x, y.toDouble(), z)
 
                 game.arena.world.spawnParticle(
                     Particle.SOUL_FIRE_FLAME,
                     particleLoc,
-                    30,
+                    2,
                     0.1,
                     0.2,
                     0.1,
                     0.01
                 )
+
 
                 if (i % 6 == 0) {
                     game.arena.world.spawnParticle(

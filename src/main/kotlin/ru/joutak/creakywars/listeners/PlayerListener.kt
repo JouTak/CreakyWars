@@ -37,15 +37,7 @@ class PlayerListener : Listener {
 
         val t = item.type
         val name = t.name
-        val isToolOrWeapon =
-            name.endsWith("_SWORD") ||
-                    name.endsWith("_PICKAXE") ||
-                    name.endsWith("_AXE") ||
-                    name.endsWith("_SHOVEL") ||
-                    name.endsWith("_HOE") ||
-                    t == Material.BOW ||
-                    t == Material.CROSSBOW
-
+        val isToolOrWeapon = name.endsWith("_SWORD")
         if (!isToolOrWeapon) return false
         val meta = item.itemMeta ?: return false
         return meta.isUnbreakable
@@ -138,16 +130,7 @@ class PlayerListener : Listener {
         val item = event.itemDrop.itemStack
         val type = item.type.name
 
-        val isForbidden = type.endsWith("_SWORD") ||
-                type.endsWith("_PICKAXE") ||
-                type.endsWith("_AXE") ||
-                type.endsWith("_SHOVEL") ||
-                type.endsWith("_HOE") ||
-                type == "BOW" ||
-                type == "CROSSBOW" ||
-                type == "TRIDENT" ||
-                type == "SHEARS" ||
-                type == "MACE"
+        val isForbidden = type.endsWith("_SWORD")
 
         if (isForbidden) {
             event.isCancelled = true

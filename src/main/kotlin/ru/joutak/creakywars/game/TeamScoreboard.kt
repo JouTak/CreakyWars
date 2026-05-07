@@ -39,7 +39,7 @@ class TeamScoreboard(private val game: Game) {
         }
     }
 
-    fun update() {
+    fun update(remaining: Long) {
         // Update only online viewers we know about.
         val toRemove = mutableListOf<UUID>()
         for ((uuid, _) in states) {
@@ -48,7 +48,7 @@ class TeamScoreboard(private val game: Game) {
                 toRemove += uuid
                 continue
             }
-            update(player)
+            update(player, remaining)
         }
         toRemove.forEach { states.remove(it) }
     }
@@ -76,13 +76,13 @@ class TeamScoreboard(private val game: Game) {
         player.scoreboard = scoreboard
     }
 
-    private fun update(player: Player) {
+    private fun update(player: Player, remaining: Long) {
         val state = states[player.uniqueId] ?: return
 
         // wipe previous
         state.lastEntries.forEach { state.scoreboard.resetScores(it) }
 
-        val lines = buildLines(player)
+        val lines = buildLines(player, remaining)
 
         val entries = ArrayList<String>(lines.size)
         for ((i, line) in lines.withIndex()) {
@@ -166,7 +166,7 @@ class TeamScoreboard(private val game: Game) {
         }
     }
 
-    private fun buildLines(viewer: Player): List<String> {
+    private fun buildLines(viewer: Player, remaining: Long): List<String> {
         val lines = mutableListOf<String>()
 
         lines += "§7Матч: §e#${game.arena.id}"
@@ -188,7 +188,27 @@ class TeamScoreboard(private val game: Game) {
             lines += formatTeamLine(t, viewerTeamId != null && t.id == viewerTeamId)
         }
 
+        lines += " "
+
+        lines += "§7До смены фаз: ${formatTime(remaining)}"
+
         return lines
+    }
+
+    private fun formatTime(ticks: Long): String {
+        var seconds = ticks / 20
+
+        val minutes = seconds / 60
+
+        seconds -= minutes * 60
+
+        val nil = if (seconds < 10) {
+            "0"
+        } else {
+            ""
+        }
+
+        return "§r$minutes:$nil$seconds"
     }
 
     private fun formatTeamLine(team: Team, isViewerTeam: Boolean): String {

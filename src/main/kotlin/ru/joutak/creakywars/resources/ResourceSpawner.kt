@@ -19,7 +19,7 @@ object ResourceSpawner {
         PluginManager.getLogger().info("ResourceSpawner инициализирован!")
     }
 
-    fun startSpawning(game: Game) {
+    fun startSpawning(game: Game, countAmplifier: Double) {
         val spawners = mutableListOf<Spawner>()
 
         for ((resourceTypeId, locations) in game.arena.mapConfig.resourceSpawners) {
@@ -37,7 +37,8 @@ object ResourceSpawner {
                     resourceType,
                     location,
                     resourceType.spawnPeriod,
-                    teamId
+                    teamId,
+                    countAmplifier
                 )
                 spawner.start()
                 spawners.add(spawner)
@@ -70,7 +71,8 @@ object ResourceSpawner {
         private val resourceType: ResourceType,
         private val spawnLocation: SpawnLocation,
         val basePeriod: Long,
-        val teamId: Int?
+        val teamId: Int?,
+        private val countAmplifier: Double
     ) {
         private var task: BukkitTask? = null
 
@@ -147,7 +149,7 @@ object ResourceSpawner {
         }
 
         private fun recalculatePeriod() {
-            val totalMultiplier = teamMultiplier * globalMultiplier
+            val totalMultiplier = teamMultiplier * globalMultiplier * countAmplifier
             currentMaxPeriod = (basePeriod / totalMultiplier).toLong().coerceAtLeast(1)
 
             if (ticksRemaining > currentMaxPeriod) {
