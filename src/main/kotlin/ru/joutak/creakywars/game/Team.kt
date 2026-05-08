@@ -6,6 +6,7 @@ import org.bukkit.ChatColor
 import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.entity.Player
+import ru.joutak.minigames.MiniGamesAPI
 import java.util.*
 
 data class Team(
@@ -81,20 +82,14 @@ data class Team(
     companion object {
         @Suppress("DEPRECATION")
         fun createDefaultTeams(count: Int): List<Team> {
-            val teams = mutableListOf<Team>()
-            val colors = listOf(
-                Triple(ChatColor.GOLD, "Оранжевые", Material.ORANGE_TERRACOTTA),
-                Triple(ChatColor.BLUE, "Синие", Material.BLUE_TERRACOTTA),
-                Triple(ChatColor.LIGHT_PURPLE, "Розовые", Material.PINK_TERRACOTTA),
-                Triple(ChatColor.GREEN, "Зелёные", Material.GREEN_TERRACOTTA),
-            )
-
-            for (i in 0 until minOf(count, colors.size)) {
-                val (color, name, wool) = colors[i]
-                teams.add(Team(i, name, color, wool))
+            return MiniGamesAPI.getTeamStyles(count).mapIndexed { idx, style ->
+                Team(
+                    id = idx,
+                    name = style.displayNamePlain,
+                    color = style.chatColor,
+                    woolColor = style.material,
+                )
             }
-
-            return teams
         }
     }
 }
