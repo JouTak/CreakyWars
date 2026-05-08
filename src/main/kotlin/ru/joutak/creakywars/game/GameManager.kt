@@ -24,7 +24,7 @@ object GameManager {
         // Team count must follow the instance config (API), not hardcoded admin-config.
         val cwTeams = Team.createDefaultTeams(instance.config.teamCount)
 
-        val game = Game(arena, cwTeams)
+        val game = Game(arena, cwTeams, instance)
         arena.game = game
         activeGames[arena.id] = game
 

@@ -37,13 +37,7 @@ data class PlayerLoadout(
     private fun createLeatherArmor(material: Material): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta as? LeatherArmorMeta ?: return item
-        val color = when (team.woolColor) {
-            Material.ORANGE_TERRACOTTA -> Color.ORANGE
-            Material.BLUE_TERRACOTTA -> Color.BLUE
-            Material.PINK_TERRACOTTA -> Color.FUCHSIA
-            Material.GREEN_TERRACOTTA -> Color.GREEN
-            else -> Color.WHITE
-        }
+        val color = teamLeatherColor(team.woolColor)
         meta.setColor(color)
 
         @Suppress("DEPRECATION")
@@ -69,6 +63,12 @@ data class PlayerLoadout(
         meta?.addItemFlags(ItemFlag.HIDE_UNBREAKABLE)
         item.itemMeta = meta
         return item
+    }
+
+    private fun teamLeatherColor(woolMaterial: Material): Color {
+        val prefix = woolMaterial.name.substringBeforeLast('_', missingDelimiterValue = "")
+        val dye = runCatching { org.bukkit.DyeColor.valueOf(prefix) }.getOrNull()
+        return dye?.color ?: Color.WHITE
     }
 
     fun giveDefaultLoadout() {

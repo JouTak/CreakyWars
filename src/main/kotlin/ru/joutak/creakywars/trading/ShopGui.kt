@@ -626,13 +626,7 @@ object ShopGui : Listener {
                 material.name.contains("_BED")
 
     private fun convertToTeamColor(item: ItemStack, teamWoolColor: Material): ItemStack {
-        val teamColorName = when (teamWoolColor) {
-            Material.ORANGE_TERRACOTTA -> "ORANGE"
-            Material.BLUE_TERRACOTTA -> "BLUE"
-            Material.PINK_TERRACOTTA -> "PINK"
-            Material.GREEN_TERRACOTTA -> "GREEN"
-            else -> "WHITE"
-        }
+        val teamColorName = teamWoolColor.name.substringBeforeLast('_', missingDelimiterValue = "WHITE")
 
         val newItemName = item.type.name.replace("WHITE", teamColorName)
 
