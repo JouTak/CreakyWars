@@ -27,7 +27,7 @@ dependencies {
     compileOnly("com.onarandombox.multiversecore:multiverse-core:4.3.14")
 
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
-    implementation("ru.joutak:minigamesapi:3.3.6-117")
+    implementation("ru.joutak:minigamesapi:3.6.0-134")
     implementation("org.mariadb.jdbc:mariadb-java-client:3.5.7")
 }
 
