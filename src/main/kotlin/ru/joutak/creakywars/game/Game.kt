@@ -39,7 +39,8 @@ import java.util.*
 @Suppress("DEPRECATION")
 class Game(
     val arena: Arena,
-    val teams: List<Team>
+    val teams: List<Team>,
+    val apiInstance: ru.joutak.minigames.domain.GameInstance,
 ) {
     private val playerData = mutableMapOf<UUID, PlayerData>()
     private var currentPhaseIndex = 0
@@ -386,6 +387,11 @@ class Game(
         teamScoreboard.update(0L)
         dayNightCycle.timeBossBar.addPlayer(player)
 
+        try {
+            ru.joutak.minigames.MiniGamesAPI.allowVoiceSpectator(player, apiInstance)
+        } catch (_: Exception) {
+        }
+
         MessageUtils.sendMessage(
             player,
             "§aВы наблюдаете за игрой §e#${arena.id}§a."
@@ -402,6 +408,11 @@ class Game(
         // Drop any ceremony bounds if they were ever applied.
         try {
             CeremonyController.clearPlayer(player)
+        } catch (_: Exception) {
+        }
+
+        try {
+            ru.joutak.minigames.MiniGamesAPI.revokeVoiceSpectator(player, apiInstance)
         } catch (_: Exception) {
         }
 
